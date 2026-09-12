@@ -60,3 +60,13 @@ next-env.d.ts
 /docs/
 /walkthrough/
 /plan/
+/graphify-out/
+# prisma
+/lib/generated/prisma
+*.db
+*.db-journal
+
+# agent skills & editor extras
+.claude/
+.windsurf/
+skills-lock.json
