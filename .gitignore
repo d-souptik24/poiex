@@ -1,6 +1,8 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ==============================================================================
+# PoiEx — Comprehensive .gitignore
+# ==============================================================================
 
-# dependencies
+# --- Dependencies ---
 /node_modules
 /.pnp
 .pnp.*
@@ -10,63 +12,119 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# --- Environment Variables & Secrets ---
+# Block all environment files except sanitized template
+.env*
+*.env
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# next.js & turbopack
+# Sensitive certificates, tokens, and private keys
+*.pem
+*.key
+*.crt
+*.pfx
+*.cer
+*.p12
+id_rsa*
+id_ecdsa*
+id_ed25519*
+*.token
+auth-token*
+.npmrc
+.yarnrc
+
+# Cloud credentials and service account files
+client_secret*.json
+*service-account*.json
+*serviceAccount*.json
+*credentials*.json
+!components.json
+
+# --- Next.js, Turbopack & Build Outputs ---
 /.next/
 /out/
 /.turbo/
-
-# production
 /build
+/dist
+/coverage
+/.cache/
+.vercel
 
-# operating systems
+# --- TypeScript ---
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Operating Systems & File Managers ---
+# macOS
 .DS_Store
-*.pem
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+[Dd]esktop.ini
 Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
 ehthumbs_vista.db
-[Dd]esktop.ini
 $RECYCLE.BIN/
+*.lnk
 
-# debug & logs
+# Linux / Generic Temp
+*~
+*.bak
+*.tmp
+*.temp
+tmp/
+temp/
+scratch/
+
+# --- Debug & Logs ---
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.history/
 
-# env files (allow example env to be committed)
-.env*
-!.env.example
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# editor & IDEs
-.idea/
+# --- Editors & IDEs ---
 .vscode/
+.idea/
+.cursor/
+.fleet/
+*.sublime-project
+*.sublime-workspace
 *.swp
 *.swo
+.*.swp
+.*.swo
 
-# documentation & planning directories
+# --- AI Agents, Tooling & Planning ---
+AGENTS.md
+CLAUDE.md
 /.agents/
+/.claude/
+/.windsurf/
+/.gemini/
+/.continue/
+/.aider*
 /docs/
 /walkthrough/
 /plan/
 /graphify-out/
-# prisma
+skills-lock.json
+
+# --- Database, Storage & Runtime Artifacts ---
 /lib/generated/prisma
 *.db
 *.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.dump
 
-# agent skills & editor extras
-.claude/
-.windsurf/
-skills-lock.json

@@ -3,7 +3,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 
 import authConfig from "./auth.config";
 import { db } from "./lib/db";
-import { getAccountByUserId, getUserById } from "./modules/auth/actions";
+import { getUserById } from "./modules/auth/actions";
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
     callbacks: {
@@ -85,8 +85,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             const existingUser = await getUserById(token.sub);
 
             if (!existingUser) return token;
-
-            const exisitingAccount = await getAccountByUserId(existingUser.id);
+            // const exisitingAccount = await getAccountByUserId(existingUser.id);
 
             token.name = existingUser.name;
             token.email = existingUser.email;
