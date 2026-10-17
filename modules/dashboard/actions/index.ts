@@ -1,168 +1,158 @@
 "use server";
 
-import { currentUser } from "@/modules/auth/actions";
 import { db } from "@/lib/db";
+import { currentUser } from "@/modules/auth/actions";
+import { revalidatePath } from "next/cache";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+export const toggleStarMarked = async (
+    playgroundId: string,
+    isChecked: boolean
+) => {
+    const user = await currentUser();
+    const userId = user?.id;
+    if (!userId) {
+        throw new Error("User Id is Required");
+    }
 
-type PlaygroundTemplate = "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
+    try {
+        if (isChecked) {
+            await db.starMark.create({
+                data: {
+                    userId,
+                    playgroundId,
+                    isMarked: isChecked,
+                },
+            });
+        } else {
+            await db.starMark.delete({
+                where: {
+                    userId_playgroundId: {
+                        userId,
+                        playgroundId: playgroundId,
+                    },
+                },
+            });
+        }
 
-interface CreatePlaygroundInput {
-    title: string;
-    template: PlaygroundTemplate;
-    description?: string;
-}
-
-interface EditPlaygroundInput {
-    title: string;
-    description: string;
-}
-
-// ─── Read ──────────────────────────────────────────────────────────────────────
+        revalidatePath("/dashboard");
+        return { success: true, isMarked: isChecked };
+    } catch (error) {
+        console.error("Error updating problem:", error);
+        return { success: false, error: "Failed to update problem" };
+    }
+};
 
 export const getAllPlaygroundForUser = async () => {
     const user = await currentUser();
 
+    if (!user?.id) return [];
+
     try {
         const playground = await db.playground.findMany({
             where: {
-                userId: user?.id,
+                userId: user.id,
             },
             include: {
                 user: true,
-                Starmark: true,
-            },
-            orderBy: {
-                updatedAt: "desc",
+                Starmark: {
+                    where: {
+                        userId: user.id,
+                    },
+                    select: {
+                        isMarked: true,
+                    },
+                },
             },
         });
 
         return playground;
     } catch (error) {
-        console.log("error is", error);
+        console.log(error);
         return [];
     }
 };
 
-// ─── Create ────────────────────────────────────────────────────────────────────
-
-export const createPlayground = async (data: CreatePlaygroundInput) => {
+export const createPlayground = async (data: {
+    title: string;
+    template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
+    description?: string;
+}) => {
     const user = await currentUser();
 
-    if (!user?.id) return null;
+    if (!user?.id) return;
+
+    const { template, title, description } = data;
 
     try {
         const playground = await db.playground.create({
             data: {
-                title: data.title,
-                template: data.template,
-                description: data.description,
+                title: title,
+                description: description,
+                template: template,
                 userId: user.id,
             },
         });
 
+        revalidatePath("/dashboard");
         return playground;
     } catch (error) {
-        console.log("createPlayground error:", error);
-        return null;
+        console.log(error);
     }
 };
 
-// ─── Update ────────────────────────────────────────────────────────────────────
+export const deleteProjectById = async (id: string) => {
+    try {
+        await db.playground.delete({
+            where: {
+                id,
+            },
+        });
+        revalidatePath("/dashboard");
+    } catch (error) {
+        console.log(error);
+    }
+};
 
 export const editProjectById = async (
     id: string,
-    data: EditPlaygroundInput
+    data: { title: string; description: string }
 ) => {
-    const user = await currentUser();
-
-    if (!user?.id) return;
-
     try {
         await db.playground.update({
-            where: { id, userId: user.id },
-            data: {
-                title: data.title,
-                description: data.description,
+            where: {
+                id,
             },
+            data: data,
         });
+        revalidatePath("/dashboard");
     } catch (error) {
-        console.log("editProjectById error:", error);
-        throw error;
+        console.log(error);
     }
 };
-
-// ─── Delete ────────────────────────────────────────────────────────────────────
-
-export const deleteProjectById = async (id: string) => {
-    const user = await currentUser();
-
-    if (!user?.id) return;
-
-    try {
-        await db.playground.delete({
-            where: { id, userId: user.id },
-        });
-    } catch (error) {
-        console.log("deleteProjectById error:", error);
-        throw error;
-    }
-};
-
-// ─── Duplicate ─────────────────────────────────────────────────────────────────
 
 export const duplicateProjectById = async (id: string) => {
-    const user = await currentUser();
-
-    if (!user?.id) return;
-
     try {
-        const original = await db.playground.findUnique({
-            where: { id, userId: user.id },
+        const originalPlayground = await db.playground.findUnique({
+            where: { id },
+            // todo: add template files
         });
-
-        if (!original) return;
+        if (!originalPlayground) {
+            throw new Error("Original playground not found");
+        }
 
         await db.playground.create({
             data: {
-                title: `${original.title} (Copy)`,
-                description: original.description,
-                template: original.template,
-                userId: user.id,
-            },
-        });
-    } catch (error) {
-        console.log("duplicateProjectById error:", error);
-        throw error;
-    }
-};
+                title: `${originalPlayground.title} (Copy)`,
+                description: originalPlayground.description,
+                template: originalPlayground.template,
+                userId: originalPlayground.userId,
 
-// ─── Star / Favourite ──────────────────────────────────────────────────────────
-
-export const toggleStarMarked = async (playgroundId: string, isMarked: boolean) => {
-    const user = await currentUser();
-
-    if (!user?.id) return { success: false, error: "Unauthenticated", isMarked: false };
-
-    try {
-        await db.starMark.upsert({
-            where: {
-                userId_playgroundId: {
-                    userId: user.id,
-                    playgroundId,
-                },
-            },
-            update: { isMarked },
-            create: {
-                userId: user.id,
-                playgroundId,
-                isMarked,
+                // todo: add template files
             },
         });
 
-        return { success: true, error: null, isMarked };
+        revalidatePath("/dashboard")
     } catch (error) {
-        console.log("toggleStarMarked error:", error);
-        return { success: false, error: "Failed to toggle", isMarked: !isMarked };
+        console.error("Error duplicating project:", error);
     }
 };
