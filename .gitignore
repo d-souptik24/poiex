@@ -128,3 +128,6 @@ skills-lock.json
 *.sqlite-journal
 *.dump
 
+# --- Template Starters (external cloned repo — not part of PoiEx source) ---
+/poiex-starters/
+

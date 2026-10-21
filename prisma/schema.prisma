@@ -75,6 +75,7 @@ model Playground  {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   //todo: add template files
+  templateFiles TemplateFile[]
   
 }
 
@@ -90,4 +91,15 @@ model StarMark {
   createdAt DateTime @default(now())
 
   @@unique([userId, playgroundId])
+}
+
+model TemplateFile {
+  id String @id @default(cuid()) @map("_id")
+  content Json
+
+  playgroundId String @unique
+  playground Playground @relation(fields: [playgroundId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
