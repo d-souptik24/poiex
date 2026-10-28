@@ -15,6 +15,18 @@ interface UseWebContaierReturn {
   destory: () => void;
 }
 
+let webcontainerBootPromise: Promise<WebContainer> | null = null;
+
+async function getBootedWebContainer(): Promise<WebContainer> {
+  if (!webcontainerBootPromise) {
+    webcontainerBootPromise = WebContainer.boot().catch((err) => {
+      webcontainerBootPromise = null;
+      throw err;
+    });
+  }
+  return webcontainerBootPromise;
+}
+
 export const useWebContainer = ({
   templateData,
 }: UseWebContainerProps): UseWebContaierReturn => {
@@ -28,7 +40,7 @@ export const useWebContainer = ({
 
     async function initializeWebContainer() {
       try {
-        const webcontainerInstance = await WebContainer.boot();
+        const webcontainerInstance = await getBootedWebContainer();
 
         if (!mounted) return;
 
@@ -51,9 +63,6 @@ export const useWebContainer = ({
 
     return () => {
       mounted = false;
-      if (instance) {
-        instance.teardown();
-      }
     };
   }, []);
 
@@ -82,13 +91,14 @@ export const useWebContainer = ({
     [instance]
   );
 
-  const destory = useCallback(()=>{
-    if(instance){
-        instance.teardown()
-        setInstance(null);
-        setServerUrl(null)
+  const destory = useCallback(() => {
+    if (instance) {
+      instance.teardown();
+      setInstance(null);
+      setServerUrl(null);
+      webcontainerBootPromise = null;
     }
-  },[instance])
+  }, [instance]);
 
   return {serverUrl , isLoading , error , instance , writeFileSync , destory}
 };

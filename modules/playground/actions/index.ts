@@ -9,45 +9,65 @@ import { currentUser } from "@/modules/auth/actions";
 
 
 export const getPlaygroundById = async (id: string) => {
+    const user = await currentUser();
+    if (!user?.id) return null;
+
     try {
-        const playground = await db.playground.findUnique({
-            where: { id },
+        const playground = await db.playground.findFirst({
+            where: {
+                id,
+                userId: user.id,
+            },
             select: {
                 title: true,
                 templateFiles: {
                     select: {
-                        content: true
-                    }
-                }
-            }
-        })
+                        content: true,
+                    },
+                },
+            },
+        });
         return playground;
     } catch (error) {
-        console.log(error)
+        console.log(error);
+        return null;
     }
-}
+};
 
 export const SaveUpdatedCode = async (playgroundId: string, data: TemplateFolder) => {
     const user = await currentUser();
-    if (!user) return null;
+    if (!user?.id) return null;
 
     try {
+        const playground = await db.playground.findFirst({
+            where: {
+                id: playgroundId,
+                userId: user.id,
+            },
+            select: { id: true },
+        });
+
+        if (!playground) {
+            console.error(`Unauthorized or non-existent playground: ${playgroundId}`);
+            return null;
+        }
+
         const updatedPlayground = await db.templateFile.upsert({
             where: {
-                playgroundId
+                playgroundId,
             },
             update: {
-                content: JSON.stringify(data)
+                content: JSON.stringify(data),
             },
             create: {
                 playgroundId,
-                content: JSON.stringify(data)
-            }
-        })
+                content: JSON.stringify(data),
+            },
+        });
 
         return updatedPlayground;
     } catch (error) {
         console.log("SaveUpdatedCode error:", error);
         return null;
     }
-}
+};

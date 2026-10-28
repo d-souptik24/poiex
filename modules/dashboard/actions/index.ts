@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { currentUser } from "@/modules/auth/actions";
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 
 export const toggleStarMarked = async (
     playgroundId: string,
@@ -101,15 +102,27 @@ export const createPlayground = async (data: {
 };
 
 export const deleteProjectById = async (id: string) => {
+    const user = await currentUser();
+    if (!user?.id) {
+        throw new Error("Unauthorized");
+    }
+
     try {
-        await db.playground.delete({
+        const result = await db.playground.deleteMany({
             where: {
                 id,
+                userId: user.id,
             },
         });
+
+        if (result.count === 0) {
+            throw new Error("Project not found or unauthorized");
+        }
+
         revalidatePath("/dashboard");
     } catch (error) {
-        console.log(error);
+        console.error("Error deleting project:", error);
+        throw error;
     }
 };
 
@@ -117,42 +130,77 @@ export const editProjectById = async (
     id: string,
     data: { title: string; description: string }
 ) => {
+    const user = await currentUser();
+    if (!user?.id) {
+        throw new Error("Unauthorized");
+    }
+
     try {
-        await db.playground.update({
+        const result = await db.playground.updateMany({
             where: {
                 id,
+                userId: user.id,
             },
-            data: data,
+            data,
         });
+
+        if (result.count === 0) {
+            throw new Error("Project not found or unauthorized");
+        }
+
         revalidatePath("/dashboard");
     } catch (error) {
-        console.log(error);
+        console.error("Error updating project:", error);
+        throw error;
     }
 };
 
 export const duplicateProjectById = async (id: string) => {
+    const user = await currentUser();
+    if (!user?.id) {
+        throw new Error("Unauthorized");
+    }
+
     try {
-        const originalPlayground = await db.playground.findUnique({
-            where: { id },
-            // todo: add template files
+        const originalPlayground = await db.playground.findFirst({
+            where: {
+                id,
+                userId: user.id,
+            },
+            include: {
+                templateFiles: {
+                    select: {
+                        content: true,
+                    },
+                },
+            },
         });
+
         if (!originalPlayground) {
             throw new Error("Original playground not found");
         }
 
-        await db.playground.create({
+        const newPlayground = await db.playground.create({
             data: {
                 title: `${originalPlayground.title} (Copy)`,
                 description: originalPlayground.description,
                 template: originalPlayground.template,
-                userId: originalPlayground.userId,
-
-                // todo: add template files
+                userId: user.id,
             },
         });
 
-        revalidatePath("/dashboard")
+        if (originalPlayground.templateFiles?.length > 0 && originalPlayground.templateFiles[0].content !== null) {
+            await db.templateFile.create({
+                data: {
+                    playgroundId: newPlayground.id,
+                    content: originalPlayground.templateFiles[0].content as Prisma.InputJsonValue,
+                },
+            });
+        }
+
+        revalidatePath("/dashboard");
     } catch (error) {
         console.error("Error duplicating project:", error);
+        throw error;
     }
 };

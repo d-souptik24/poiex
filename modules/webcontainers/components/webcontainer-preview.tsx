@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 
 import { WebContainer } from "@webcontainer/api";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
-import TerminalComponent from "./terminal";
+import TerminalComponent, { type TerminalRef } from "./terminal";
 
 interface WebContainerPreviewProps {
   templateData: TemplateFolder;
@@ -17,6 +17,7 @@ interface WebContainerPreviewProps {
   instance: WebContainer | null;
   writeFileSync: (path: string, content: string) => Promise<void>;
   forceResetup?: boolean; // Optional prop to force re-setup
+  lastSavedAt?: number;
 }
 const WebContainerPreview = ({
   templateData,
@@ -26,8 +27,10 @@ const WebContainerPreview = ({
   serverUrl,
   writeFileSync,
   forceResetup = false,
+  lastSavedAt,
 }: WebContainerPreviewProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewKey, setPreviewKey] = useState<number>(0);
   const [loadingState, setLoadingState] = useState({
     transforming: false,
     mounting: false,
@@ -41,11 +44,12 @@ const WebContainerPreview = ({
   const [isSetupComplete, setIsSetupComplete] = useState(false);
   const [isSetupInProgress, setIsSetupInProgress] = useState(false);
 
-  const terminalRef = useRef<any>(null);
+  const terminalRef = useRef<TerminalRef | null>(null);
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
     if (forceResetup) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsSetupComplete(false);
       setIsSetupInProgress(false);
       setPreviewUrl("");
@@ -90,11 +94,14 @@ const WebContainerPreview = ({
               }
 
               setPreviewUrl(url);
+              setPreviewKey((prev) => prev + 1);
               setLoadingState((prev) => ({
                 ...prev,
                 starting: false,
                 ready: true,
               }));
+              setIsSetupComplete(true);
+              setIsSetupInProgress(false);
             });
 
             setCurrentStep(4);
@@ -113,7 +120,7 @@ const WebContainerPreview = ({
           );
         }
 
-        // @ts-ignore
+        // @ts-expect-error templateData format is verified before mount
         const files = transformToWebContainerFormat(templateData);
         setLoadingState((prev) => ({
           ...prev,
@@ -192,7 +199,27 @@ const WebContainerPreview = ({
           );
         }
 
-        const startProcess = await instance.spawn("npm", ["run", "start"]);
+        // Dynamically detect script: prefer dev, then start, then serve
+        let scriptName = "dev";
+        try {
+          const packageJsonContent = await instance.fs.readFile(
+            "package.json",
+            "utf8",
+          );
+          const pkg = JSON.parse(packageJsonContent);
+          const scripts = pkg.scripts || {};
+          if (scripts.dev) {
+            scriptName = "dev";
+          } else if (scripts.start) {
+            scriptName = "start";
+          } else if (scripts.serve) {
+            scriptName = "serve";
+          }
+        } catch {
+          scriptName = "dev";
+        }
+
+        const startProcess = await instance.spawn("npm", ["run", scriptName]);
 
         instance.on("server-ready", (port: number, url: string) => {
           if (terminalRef.current?.writeToTerminal) {
@@ -201,6 +228,7 @@ const WebContainerPreview = ({
             );
           }
           setPreviewUrl(url);
+          setPreviewKey((prev) => prev + 1);
           setLoadingState((prev) => ({
             ...prev,
             starting: false,
@@ -241,9 +269,16 @@ const WebContainerPreview = ({
     setupContainer();
   }, [instance, templateData, isSetupComplete, isSetupInProgress]);
 
+  // Silently reload preview when a file is saved
   useEffect(() => {
-    return () => {};
-  }, []);
+    if (!lastSavedAt || !isSetupComplete) return;
+
+    const timer = setTimeout(() => {
+      setPreviewKey((prev) => prev + 1);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [lastSavedAt, isSetupComplete]);
 
   if (isLoading) {
     return (
@@ -345,6 +380,7 @@ const WebContainerPreview = ({
         <div className="h-full flex flex-col">
           <div className="flex-1">
             <iframe
+              key={previewKey}
               src={previewUrl}
               className="w-full h-full border-none"
               title="WebContainer Preview"

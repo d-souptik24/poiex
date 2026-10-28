@@ -91,6 +91,7 @@ const MainPlaygroundPage = () => {
         writeFileSync,
     } = useWebContainer({ templateData });
 
+    const [lastSavedAt, setLastSavedAt] = useState<number>(0);
     const lastSyncedContent = useRef<Map<string, string>>(new Map());
 
     useEffect(() => {
@@ -180,12 +181,15 @@ const MainPlaygroundPage = () => {
             const targetFileId = fileId || activeFileId;
             if (!targetFileId) return;
 
-            const fileToSave = openFiles.find((f) => f.id === targetFileId);
+            const latestExplorerState = useFileExplorer.getState();
+            const fileToSave =
+                latestExplorerState.openFiles.find((f) => f.id === targetFileId) ||
+                openFiles.find((f) => f.id === targetFileId);
 
             if (!fileToSave) return;
 
-            const latestTemplateData = useFileExplorer.getState().templateData;
-            if (!latestTemplateData) return
+            const latestTemplateData = latestExplorerState.templateData;
+            if (!latestTemplateData) return;
 
             try {
                 const filePath = findFilePath(fileToSave, latestTemplateData);
@@ -200,9 +204,9 @@ const MainPlaygroundPage = () => {
                     JSON.stringify(latestTemplateData)
                 );
 
-                // @ts-expect-error
-                const updateFileContent = (items: any[]) =>
-                    // @ts-expect-error
+                const updateFileContent = (
+                    items: (TemplateFile | TemplateFolder)[]
+                ): (TemplateFile | TemplateFolder)[] =>
                     items.map((item) => {
                         if ("folderName" in item) {
                             return { ...item, items: updateFileContent(item.items) };
@@ -227,8 +231,8 @@ const MainPlaygroundPage = () => {
                     }
                 }
 
-                const newTemplateData = await saveTemplateData(updatedTemplateData);
-                setTemplateData(newTemplateData || updatedTemplateData);
+                await saveTemplateData(updatedTemplateData);
+                setTemplateData(updatedTemplateData);
                 // Update open files
                 const updatedOpenFiles = openFiles.map((f) =>
                     f.id === targetFileId
@@ -241,6 +245,7 @@ const MainPlaygroundPage = () => {
                         : f
                 );
                 setOpenFiles(updatedOpenFiles);
+                setLastSavedAt(Date.now());
 
                 toast.success(
                     `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`
@@ -381,16 +386,18 @@ const MainPlaygroundPage = () => {
 
                             <div className="flex items-center gap-1">
                                 <Tooltip>
-                                    <TooltipTrigger>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => handleSave()}
-                                            disabled={!activeFile || !activeFile.hasUnsavedChanges}
-                                        >
-                                            <Save className="h-4 w-4" />
-                                        </Button>
-                                    </TooltipTrigger>
+                                    <TooltipTrigger
+                                        render={
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => handleSave()}
+                                                disabled={!activeFile || !activeFile.hasUnsavedChanges}
+                                            >
+                                                <Save className="h-4 w-4" />
+                                            </Button>
+                                        }
+                                    />
                                     <TooltipContent>Save (Ctrl+S)</TooltipContent>
                                 </Tooltip>
 
@@ -512,7 +519,11 @@ const MainPlaygroundPage = () => {
                                                     aiSuggestions.rejectSuggestion(editor)
                                                 }
                                                 onTriggerSuggestion={(type, editor) =>
-                                                    aiSuggestions.fetchSuggestion(type, editor)
+                                                    aiSuggestions.fetchSuggestion(
+                                                        type,
+                                                        editor,
+                                                        activeFile ? `${activeFile.filename}.${activeFile.fileExtension}` : undefined
+                                                    )
                                                 }
                                             />
                                         </ResizablePanel>
@@ -529,6 +540,7 @@ const MainPlaygroundPage = () => {
                                                         error={containerError}
                                                         serverUrl={serverUrl!}
                                                         forceResetup={false}
+                                                        lastSavedAt={lastSavedAt}
                                                     />
                                                 </ResizablePanel>
                                             </>
