@@ -1,152 +1,58 @@
-import { useState, useCallback, useRef } from "react";
-import type { editor as monacoEditor } from "monaco-editor";
-import type { Monaco } from "@monaco-editor/react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 
-type EditorInstance = monacoEditor.IStandaloneCodeEditor;
-
-interface AISuggestionsState {
-    suggestion: string | null;
-    isLoading: boolean;
-    position: { line: number; column: number } | null;
+export interface UseAISuggestionsReturn {
     isEnabled: boolean;
+    isLoading: boolean;
+    toggleEnabled: () => void;
 }
 
-interface UseAISuggestionsReturn extends AISuggestionsState {
-    toggleEnabled: () => void;
-    fetchSuggestion: (type: string, editor: EditorInstance | null, fileName?: string) => Promise<void>;
-    acceptSuggestion: (editor?: EditorInstance | null, monaco?: Monaco | null) => void;
-    rejectSuggestion: (editor?: EditorInstance | null) => void;
-    clearSuggestion: (editor?: EditorInstance | null) => void;
-}
+const STORAGE_KEY = "poiex-ai-enabled";
+const listeners = new Set<() => void>();
+
+const getAISnapshot = (): boolean => {
+    try {
+        if (typeof window === "undefined") return true;
+        const val = localStorage.getItem(STORAGE_KEY);
+        if (val !== null) return val === "true";
+    } catch {
+        // Fallback for private browsing or restricted environments
+    }
+    return true; // default enabled
+};
+
+const getServerSnapshot = (): boolean => true;
+
+const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    if (typeof window !== "undefined") {
+        window.addEventListener("storage", listener);
+    }
+    return () => {
+        listeners.delete(listener);
+        if (typeof window !== "undefined") {
+            window.removeEventListener("storage", listener);
+        }
+    };
+};
 
 export const useAISuggestions = (): UseAISuggestionsReturn => {
-    const [state, setState] = useState<AISuggestionsState>({
-        suggestion: null,
-        isLoading: false,
-        position: null,
-        isEnabled: true,
-    });
-
-    const abortControllerRef = useRef<AbortController | null>(null);
+    const isEnabled = useSyncExternalStore(subscribe, getAISnapshot, getServerSnapshot);
+    const [isLoading] = useState(false);
 
     const toggleEnabled = useCallback(() => {
-        setState((prev) => ({ ...prev, isEnabled: !prev.isEnabled }));
-    }, []);
-
-    const fetchSuggestion = useCallback(async (type: string, editor: EditorInstance | null, fileName?: string) => {
-        if (!editor) return;
-
-        const model = editor.getModel();
-        const cursorPosition = editor.getPosition();
-        if (!model || !cursorPosition) return;
-
-        // Only skip if the file is completely blank (no context available)
-        if (!model.getValue().trim()) return;
-
-        // Abort previous in-flight request to prevent queuing on CPU
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-
-        setState((prev) => {
-            if (!prev.isEnabled) return prev;
-            return { ...prev, isLoading: true };
-        });
-
         try {
-            const payload = {
-                fileContent: model.getValue(),
-                cursorLine: cursorPosition.lineNumber - 1,
-                cursorColumn: cursorPosition.column - 1,
-                suggestionType: type,
-                fileName,
-            };
-
-            const response = await fetch("/api/code-completion", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-                signal: controller.signal,
-            });
-
-            if (!response.ok) {
-                throw new Error(`API responded with status ${response.status}`);
-            }
-
-            const data = await response.json();
-
-            if (data.suggestion) {
-                const suggestionText = data.suggestion.trim();
-                setState((prev) => ({
-                    ...prev,
-                    suggestion: suggestionText,
-                    position: {
-                        line: cursorPosition.lineNumber,
-                        column: cursorPosition.column,
-                    },
-                    isLoading: false,
-                }));
-            } else {
-                setState((prev) => ({ ...prev, isLoading: false }));
-            }
-        } catch (error: unknown) {
-            // Silently ignore aborted requests caused by user typing new characters
-            if (error instanceof Error && error.name === "AbortError") {
-                return;
-            }
-            console.error("Error fetching code suggestion:", error);
-            setState((prev) => ({ ...prev, isLoading: false }));
-        } finally {
-            if (abortControllerRef.current === controller) {
-                abortControllerRef.current = null;
-            }
+            const current = getAISnapshot();
+            const next = !current;
+            localStorage.setItem(STORAGE_KEY, String(next));
+            listeners.forEach((listener) => listener());
+        } catch (e) {
+            console.error("Failed to persist AI suggestion state:", e);
         }
     }, []);
-
-
-
-    const acceptSuggestion = useCallback(() => {
-        setState((currentState) => {
-            if (!currentState.suggestion) {
-                return currentState;
-            }
-
-            return {
-                ...currentState,
-                suggestion: null,
-                position: null,
-            };
-        });
-    }, []);
-
-    const rejectSuggestion = useCallback(() => {
-        setState((currentState) => ({
-            ...currentState,
-            suggestion: null,
-            position: null,
-        }));
-    }, []);
-
-    const clearSuggestion = useCallback(() => {
-        setState((currentState) => ({
-            ...currentState,
-            suggestion: null,
-            position: null,
-        }));
-    }, []);
-
-
 
     return {
-        ...state,
+        isEnabled,
+        isLoading,
         toggleEnabled,
-        fetchSuggestion,
-        acceptSuggestion,
-        rejectSuggestion,
-        clearSuggestion
-    }
-
-}
+    };
+};

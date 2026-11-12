@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -23,28 +22,24 @@ import {
 } from "lucide-react";
 import React from "react";
 import { cn } from "@/lib/utils";
-import { AIChatSidePanel } from "@/modules/ai-chat/components/ai-chat-sidebarpanel";
-
-
 
 interface ToggleAIProps {
     isEnabled: boolean;
     onToggle: (value: boolean) => void;
-
     suggestionLoading: boolean;
     loadingProgress?: number;
     activeFeature?: string;
+    onOpenChat?: () => void;
 }
 
 const ToggleAI: React.FC<ToggleAIProps> = ({
     isEnabled,
     onToggle,
-
     suggestionLoading,
     loadingProgress = 0,
     activeFeature,
+    onOpenChat,
 }) => {
-    const [isChatOpen, setIsChatOpen] = useState(false);
 
     return (
         <>
@@ -152,7 +147,7 @@ const ToggleAI: React.FC<ToggleAIProps> = ({
                     <DropdownMenuSeparator />
 
                     <DropdownMenuItem
-                        onClick={() => setIsChatOpen(true)}
+                        onClick={() => onOpenChat?.()}
                         className="py-2.5 cursor-pointer"
                     >
                         <div className="flex items-center gap-3 w-full">
@@ -167,12 +162,6 @@ const ToggleAI: React.FC<ToggleAIProps> = ({
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
-
-            <AIChatSidePanel
-                isOpen={isChatOpen}
-                onClose={() => setIsChatOpen(false)}
-
-            />
         </>
     );
 };
