@@ -53,6 +53,19 @@ export const getEditorLanguage = (fileExtension: string): string => {
     return languageMap[extension] || "plaintext";
 };
 
+export interface EditorThemeOption {
+    id: string;
+    label: string;
+    previewBg: string;
+}
+
+export const EDITOR_THEMES: readonly EditorThemeOption[] = [
+    { id: "modern-dark", label: "Modern Dark", previewBg: "#0D1117" },
+    { id: "vs-dark", label: "VS Code Dark", previewBg: "#1E1E1E" },
+    { id: "modern-light", label: "Modern Light", previewBg: "#FAFBFC" },
+    { id: "light", label: "VS Code Light", previewBg: "#FFFFFF" },
+] as const;
+
 export const configureMonaco = (monaco: Monaco) => {
     // Define a beautiful modern dark theme
     monaco.editor.defineTheme("modern-dark", {
@@ -185,6 +198,11 @@ export const configureMonaco = (monaco: Monaco) => {
             // Ruler
             "editorRuler.foreground": "#21262D",
 
+            // Ghost text (inline AI completions - muted gray)
+            "editorGhostText.foreground": "#7D8590",
+            "editorGhostText.background": "transparent",
+            "editorGhostText.border": "transparent",
+
             // Whitespace
             "editorWhitespace.foreground": "#6E7681",
 
@@ -220,8 +238,108 @@ export const configureMonaco = (monaco: Monaco) => {
         },
     });
 
-    // Set the theme
-    monaco.editor.setTheme("modern-dark");
+    // Define a beautiful modern light theme (GitHub/Linear inspired, soft & non-glaring)
+    const modernLightRules: editor.ITokenThemeRule[] = [
+        { token: "comment", foreground: "6E7781", fontStyle: "italic" },
+        { token: "comment.line", foreground: "6E7781", fontStyle: "italic" },
+        { token: "comment.block", foreground: "6E7781", fontStyle: "italic" },
+        { token: "keyword", foreground: "CF222E", fontStyle: "bold" },
+        { token: "keyword.control", foreground: "CF222E", fontStyle: "bold" },
+        { token: "keyword.operator", foreground: "0550AE" },
+        { token: "string", foreground: "0A3069" },
+        { token: "string.quoted", foreground: "0A3069" },
+        { token: "string.template", foreground: "0A3069" },
+        { token: "number", foreground: "0550AE" },
+        { token: "number.hex", foreground: "0550AE" },
+        { token: "number.float", foreground: "0550AE" },
+        { token: "entity.name.function", foreground: "8250DF" },
+        { token: "support.function", foreground: "8250DF" },
+        { token: "variable", foreground: "24292F" },
+        { token: "variable.parameter", foreground: "953800" },
+        { token: "variable.other", foreground: "24292F" },
+        { token: "entity.name.type", foreground: "953800" },
+        { token: "support.type", foreground: "953800" },
+        { token: "storage.type", foreground: "CF222E" },
+        { token: "entity.name.class", foreground: "953800" },
+        { token: "support.class", foreground: "953800" },
+        { token: "constant", foreground: "0550AE" },
+        { token: "constant.language", foreground: "CF222E" },
+        { token: "constant.numeric", foreground: "0550AE" },
+        { token: "punctuation", foreground: "57606A" },
+        { token: "tag", foreground: "116329" },
+        { token: "tag.id", foreground: "0550AE" },
+        { token: "tag.class", foreground: "8250DF" },
+        { token: "attribute.name", foreground: "0550AE" },
+        { token: "attribute.value", foreground: "0A3069" },
+        { token: "attribute.name.css", foreground: "0550AE" },
+        { token: "attribute.value.css", foreground: "0A3069" },
+        { token: "property-name.css", foreground: "0550AE" },
+        { token: "property-value.css", foreground: "0A3069" },
+        { token: "key", foreground: "0550AE" },
+        { token: "string.key", foreground: "0550AE" },
+        { token: "string.value", foreground: "0A3069" },
+        { token: "invalid", foreground: "CF222E", fontStyle: "underline" },
+        { token: "invalid.deprecated", foreground: "6E7781", fontStyle: "strikethrough" },
+    ];
+
+    const modernLightColors = {
+        "editor.background": "#FAFBFC",
+        "editor.foreground": "#24292F",
+        "editorLineNumber.foreground": "#8C959F",
+        "editorLineNumber.activeForeground": "#24292F",
+        "editorCursor.foreground": "#24292F",
+        "editor.selectionBackground": "#CCE5FF",
+        "editor.selectionHighlightBackground": "#E8F2FF",
+        "editor.inactiveSelectionBackground": "#EBF2FF",
+        "editor.lineHighlightBackground": "#F1F3F5",
+        "editor.lineHighlightBorder": "#E1E4E800",
+        "editorGutter.background": "#FAFBFC",
+        "editorGutter.modifiedBackground": "#D4A72C",
+        "editorGutter.addedBackground": "#2DA44E",
+        "editorGutter.deletedBackground": "#CF222E",
+        "scrollbar.shadow": "#00000010",
+        "scrollbarSlider.background": "#D0D7DE66",
+        "scrollbarSlider.hoverBackground": "#D0D7DEAA",
+        "scrollbarSlider.activeBackground": "#D0D7DECC",
+        "minimap.background": "#F6F8FA",
+        "minimap.selectionHighlight": "#CCE5FF",
+        "editor.findMatchBackground": "#FFD33D",
+        "editor.findMatchHighlightBackground": "#FFEAA780",
+        "editor.wordHighlightBackground": "#EBF2FF",
+        "editorBracketMatch.background": "#CCE5FF40",
+        "editorBracketMatch.border": "#0550AE",
+        "editorIndentGuide.background": "#E1E4E8",
+        "editorIndentGuide.activeBackground": "#C6CBD1",
+        "editorRuler.foreground": "#E1E4E8",
+        "editorGhostText.foreground": "#6E7781",
+        "editorGhostText.background": "transparent",
+        "editorGhostText.border": "transparent",
+        "editorWhitespace.foreground": "#D0D7DE",
+        "editorError.foreground": "#CF222E",
+        "editorWarning.foreground": "#9A6700",
+        "editorInfo.foreground": "#0550AE",
+        "editorSuggestWidget.background": "#FFFFFF",
+        "editorSuggestWidget.border": "#D0D7DE",
+        "editorSuggestWidget.foreground": "#24292F",
+        "editorSuggestWidget.selectedBackground": "#EBF2FF",
+        "editorHoverWidget.background": "#FFFFFF",
+        "editorHoverWidget.border": "#D0D7DE",
+    };
+
+    monaco.editor.defineTheme("modern-light", {
+        base: "vs",
+        inherit: true,
+        rules: modernLightRules,
+        colors: modernLightColors,
+    });
+
+    monaco.editor.defineTheme("light", {
+        base: "vs",
+        inherit: true,
+        rules: modernLightRules,
+        colors: modernLightColors,
+    });
+
 
     // Configure additional editor settings
     monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({

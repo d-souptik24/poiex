@@ -42,3 +42,104 @@ export const generateFileId = (file: TemplateFile, rootFolder?: TemplateFolder |
     const path = findFilePath(file, rootFolder)?.replace(/^\/+/, "");
     return path || fallback;
 };
+
+/**
+ * Finds a file in the template tree by its relative path or filename
+ */
+export function findFileByPath(
+    targetPath: string,
+    folder: TemplateFolder,
+    pathPartsSoFar: string[] = []
+): TemplateFile | null {
+    if (!folder || !folder.items) return null;
+    for (const item of folder.items) {
+        if ("folderName" in item) {
+            const res = findFileByPath(targetPath, item, [...pathPartsSoFar, item.folderName]);
+            if (res) return res;
+        } else {
+            const fullPath = [
+                ...pathPartsSoFar,
+                item.filename + (item.fileExtension ? `.${item.fileExtension}` : ""),
+            ].join("/");
+            if (fullPath === targetPath || item.filename === targetPath) {
+                return item;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Finds the first code file in the project folder hierarchy (fallback entry file)
+ */
+export function findFirstFile(folder: TemplateFolder): TemplateFile | null {
+    if (!folder || !folder.items) return null;
+    for (const item of folder.items) {
+        if (!("folderName" in item)) {
+            return item;
+        }
+    }
+    for (const item of folder.items) {
+        if ("folderName" in item) {
+            const res = findFirstFile(item);
+            if (res) return res;
+        }
+    }
+    return null;
+}
+
+/**
+ * Deep clones templateFolder and updates file contents based on provided open files.
+ */
+export function updateTemplateTreeWithFiles<
+    T extends { filename: string; fileExtension: string; content?: string }
+>(rootFolder: TemplateFolder, files: T[]): TemplateFolder {
+    const updated = JSON.parse(JSON.stringify(rootFolder)) as TemplateFolder;
+
+    for (const file of files) {
+        if (typeof file.content !== "string") continue;
+        const filePath = findFilePath(file as TemplateFile, rootFolder);
+        if (!filePath) continue;
+
+        const parts = filePath.split("/");
+        const filenameWithExt = parts.pop()!;
+        let currentFolder = updated;
+
+        let folderFound = true;
+        for (const part of parts) {
+            if (!part) continue;
+            const nextFolder = currentFolder.items.find(
+                (item): item is TemplateFolder =>
+                    "folderName" in item && item.folderName === part
+            );
+            if (!nextFolder) {
+                folderFound = false;
+                break;
+            }
+            currentFolder = nextFolder;
+        }
+
+        if (!folderFound) continue;
+
+        const lastDotIndex = filenameWithExt.lastIndexOf(".");
+        const filename =
+            lastDotIndex !== -1
+                ? filenameWithExt.slice(0, lastDotIndex)
+                : filenameWithExt;
+        const fileExtension =
+            lastDotIndex !== -1 ? filenameWithExt.slice(lastDotIndex + 1) : "";
+
+        const targetFileNode = currentFolder.items.find(
+            (item): item is TemplateFile =>
+                !("folderName" in item) &&
+                item.filename === filename &&
+                (item.fileExtension || "") === fileExtension
+        );
+
+        if (targetFileNode) {
+            targetFileNode.content = file.content;
+        }
+    }
+
+    return updated;
+}

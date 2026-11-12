@@ -23,7 +23,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftIcon } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -60,11 +60,13 @@ function SidebarProvider({
   className,
   style,
   children,
+  cookieName = SIDEBAR_COOKIE_NAME,
   ...props
 }: React.ComponentProps<"div"> & {
   defaultOpen?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  cookieName?: string
 }) {
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
@@ -73,6 +75,19 @@ function SidebarProvider({
   // We use openProp and setOpenProp for control from outside the component.
   const [_open, _setOpen] = React.useState(defaultOpen)
   const open = openProp ?? _open
+
+  // Restore sidebar state from cookie on client mount
+  React.useEffect(() => {
+    try {
+      const match = document.cookie.match(
+        new RegExp(`(?:^|; )${cookieName}=([^;]*)`)
+      )
+      if (match && match[1] !== undefined) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        _setOpen(match[1] === "true")
+      }
+    } catch {}
+  }, [cookieName])
   const setOpen = React.useCallback(
     (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value
@@ -83,9 +98,9 @@ function SidebarProvider({
       }
 
       // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+      document.cookie = `${cookieName}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
-    [setOpenProp, open]
+    [setOpenProp, open, cookieName]
   )
 
   // Helper to toggle the sidebar.
@@ -256,24 +271,44 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar()
+  const { toggleSidebar, open } = useSidebar()
 
   return (
-    <Button
-      data-sidebar="trigger"
-      data-slot="sidebar-trigger"
-      variant="ghost"
-      size="icon-sm"
-      className={cn(className)}
-      onClick={(event) => {
-        onClick?.(event)
-        toggleSidebar()
-      }}
-      {...props}
-    >
-      <PanelLeftIcon />
-      <span className="sr-only">Toggle Sidebar</span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            data-sidebar="trigger"
+            data-slot="sidebar-trigger"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 active:bg-zinc-800 border border-zinc-800/60 hover:border-zinc-700/80 transition-all duration-150 shrink-0",
+              className
+            )}
+            onClick={(event) => {
+              onClick?.(event)
+              toggleSidebar()
+            }}
+            aria-label={open ? "Collapse Sidebar (Ctrl+B)" : "Expand Sidebar (Ctrl+B)"}
+            {...props}
+          >
+            {open ? (
+              <PanelLeftClose className="h-3.5 w-3.5 transition-transform duration-150" />
+            ) : (
+              <PanelLeftOpen className="h-3.5 w-3.5 transition-transform duration-150 text-zinc-300" />
+            )}
+            <span className="sr-only">Toggle Sidebar</span>
+          </Button>
+        }
+      />
+      <TooltipContent side="bottom" align="start" className="flex items-center gap-1.5 text-xs py-1 px-2 bg-zinc-900 border border-zinc-800 text-zinc-200 shadow-xl font-sans">
+        <span>{open ? "Collapse Sidebar" : "Expand Sidebar"}</span>
+        <kbd className="px-1 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700/80 rounded text-zinc-400 font-mono">
+          Ctrl+B
+        </kbd>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

@@ -46,6 +46,12 @@ export const useWebContainer = ({
 
         setInstance(webcontainerInstance);
         setIsLoading(false);
+
+        webcontainerInstance.on("server-ready", (port: number, url: string) => {
+          if (mounted) {
+            setServerUrl(url);
+          }
+        });
       } catch (error) {
         console.error("Failed to initialize WebContainer:", error);
         if (mounted) {
@@ -73,14 +79,15 @@ export const useWebContainer = ({
       }
 
       try {
-        const pathParts = path.split("/");
+        const cleanPath = path.replace(/^\/+/, "");
+        const pathParts = cleanPath.split("/");
         const folderPath = pathParts.slice(0, -1).join("/");
 
         if (folderPath) {
-          await instance.fs.mkdir(folderPath, { recursive: true }); // Create folder structure recursively
+          await instance.fs.mkdir(folderPath, { recursive: true }).catch(() => {});
         }
 
-        await instance.fs.writeFile(path, content);
+        await instance.fs.writeFile(cleanPath, content);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to write file";

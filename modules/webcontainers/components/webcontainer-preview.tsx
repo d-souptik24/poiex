@@ -2,12 +2,20 @@
 import React, { useEffect, useState, useRef } from "react";
 
 import { transformToWebContainerFormat } from "../hooks/transformer";
-import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { CheckCircle, Loader2, XCircle, Sparkles, RefreshCw } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import LoadingStep from "@/modules/playground/components/loader";
+import { useTheme } from "next-themes";
+import { cn } from "@/lib/utils";
 
-import { WebContainer } from "@webcontainer/api";
+import { WebContainer, type WebContainerProcess } from "@webcontainer/api";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
 import TerminalComponent, { type TerminalRef } from "./terminal";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
 
 interface WebContainerPreviewProps {
   templateData: TemplateFolder;
@@ -18,6 +26,8 @@ interface WebContainerPreviewProps {
   writeFileSync: (path: string, content: string) => Promise<void>;
   forceResetup?: boolean; // Optional prop to force re-setup
   lastSavedAt?: number;
+  onExplainError?: (errorLogs: string) => void;
+  playgroundId?: string;
 }
 const WebContainerPreview = ({
   templateData,
@@ -25,19 +35,16 @@ const WebContainerPreview = ({
   instance,
   isLoading,
   serverUrl,
-  writeFileSync,
   forceResetup = false,
   lastSavedAt,
+  onExplainError,
+  playgroundId,
 }: WebContainerPreviewProps) => {
-  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewUrl, setPreviewUrl] = useState<string>(serverUrl || "");
+  const activePreviewUrl = previewUrl || serverUrl || "";
   const [previewKey, setPreviewKey] = useState<number>(0);
-  const [loadingState, setLoadingState] = useState({
-    transforming: false,
-    mounting: false,
-    installing: false,
-    starting: false,
-    ready: false,
-  });
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
   const [currentStep, setCurrentStep] = useState(0);
   const totalSteps = 4;
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -45,6 +52,7 @@ const WebContainerPreview = ({
   const [isSetupInProgress, setIsSetupInProgress] = useState(false);
 
   const terminalRef = useRef<TerminalRef | null>(null);
+  const activeDevProcessRef = useRef<WebContainerProcess | null>(null);
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
@@ -54,15 +62,9 @@ const WebContainerPreview = ({
       setIsSetupInProgress(false);
       setPreviewUrl("");
       setCurrentStep(0);
-      setLoadingState({
-        transforming: false,
-        mounting: false,
-        installing: false,
-        starting: false,
-        ready: false,
-      });
     }
   }, [forceResetup]);
+
 
   useEffect(() => {
     async function setupContainer() {
@@ -73,12 +75,32 @@ const WebContainerPreview = ({
         setSetupError(null);
 
         try {
+          let isSameProject = false;
+          if (playgroundId) {
+            try {
+              const currentProjectId = await instance.fs.readFile(
+                ".poiex-project-id",
+                "utf8"
+              );
+              isSameProject = currentProjectId.trim() === playgroundId.trim();
+            } catch {
+              isSameProject = false;
+            }
+          }
+
           const packageJsonExists = await instance.fs.readFile(
             "package.json",
             "utf8",
           );
 
-          if (packageJsonExists) {
+          if (packageJsonExists && (!playgroundId || isSameProject)) {
+            if (serverUrl) {
+              setPreviewUrl(serverUrl);
+              setPreviewKey((prev) => prev + 1);
+              setIsSetupComplete(true);
+              setIsSetupInProgress(false);
+              return;
+            }
             // Files are already mounted, just reconnect to existing server
             if (terminalRef.current?.writeToTerminal) {
               terminalRef.current.writeToTerminal(
@@ -95,23 +117,38 @@ const WebContainerPreview = ({
 
               setPreviewUrl(url);
               setPreviewKey((prev) => prev + 1);
-              setLoadingState((prev) => ({
-                ...prev,
-                starting: false,
-                ready: true,
-              }));
               setIsSetupComplete(true);
               setIsSetupInProgress(false);
             });
 
             setCurrentStep(4);
-            setLoadingState((prev) => ({ ...prev, starting: true }));
             return;
           }
-        } catch (error) {}
+        } catch {}
+
+        // If switching projects, stop existing server and clean root directory to prevent file pollution
+        const previousProcess = activeDevProcessRef.current as WebContainerProcess | null;
+        if (previousProcess) {
+          try {
+            previousProcess.kill();
+          } catch {}
+          activeDevProcessRef.current = null;
+        }
+
+        try {
+          const rootEntries = await instance.fs.readdir("/");
+          for (const entry of rootEntries) {
+            try {
+              await instance.fs.rm(entry, { recursive: true, force: true });
+            } catch {}
+          }
+        } catch {}
+
+        if (terminalRef.current?.resetDirectory) {
+          terminalRef.current.resetDirectory();
+        }
 
         // Step-1 transform data
-        setLoadingState((prev) => ({ ...prev, transforming: true }));
         setCurrentStep(1);
         // Write to terminal
         if (terminalRef.current?.writeToTerminal) {
@@ -122,11 +159,6 @@ const WebContainerPreview = ({
 
         // @ts-expect-error templateData format is verified before mount
         const files = transformToWebContainerFormat(templateData);
-        setLoadingState((prev) => ({
-          ...prev,
-          transforming: false,
-          mounting: true,
-        }));
         setCurrentStep(2);
 
         //  Step-2 Mount Files
@@ -138,16 +170,39 @@ const WebContainerPreview = ({
         }
         await instance.mount(files);
 
+        if (playgroundId) {
+          try {
+            await instance.fs.writeFile(".poiex-project-id", playgroundId);
+          } catch {}
+        }
+
         if (terminalRef.current?.writeToTerminal) {
           terminalRef.current.writeToTerminal(
             "✅ Files mounted successfully\r\n",
           );
         }
-        setLoadingState((prev) => ({
-          ...prev,
-          mounting: false,
-          installing: true,
-        }));
+
+        // Check if root package.json exists; skip install and server boot for non-Node repos
+        let hasRootPackageJson = false;
+        try {
+          await instance.fs.readFile("package.json", "utf8");
+          hasRootPackageJson = true;
+        } catch {
+          hasRootPackageJson = false;
+        }
+
+        if (!hasRootPackageJson) {
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              "ℹ️ No root package.json found — running in Editor mode\r\n",
+            );
+          }
+          setCurrentStep(4);
+          setIsSetupComplete(true);
+          setIsSetupInProgress(false);
+          return;
+        }
+
         setCurrentStep(3);
 
         // Step-3 Install dependencies
@@ -184,11 +239,6 @@ const WebContainerPreview = ({
           );
         }
 
-        setLoadingState((prev) => ({
-          ...prev,
-          installing: false,
-          starting: true,
-        }));
         setCurrentStep(4);
 
         // STEP-4 Start The Server
@@ -199,8 +249,8 @@ const WebContainerPreview = ({
           );
         }
 
-        // Dynamically detect script: prefer dev, then start, then serve
-        let scriptName = "dev";
+        // Dynamically detect script: prefer dev, then start, then serve, or fallback to node entrypoint
+        let scriptName: string | null = null;
         try {
           const packageJsonContent = await instance.fs.readFile(
             "package.json",
@@ -219,7 +269,35 @@ const WebContainerPreview = ({
           scriptName = "dev";
         }
 
-        const startProcess = await instance.spawn("npm", ["run", scriptName]);
+        const currentDevProcess = activeDevProcessRef.current as WebContainerProcess | null;
+        if (currentDevProcess) {
+          try {
+            currentDevProcess.kill();
+          } catch {}
+          activeDevProcessRef.current = null;
+        }
+        let startProcess: WebContainerProcess;
+        if (scriptName) {
+          startProcess = await instance.spawn("npm", ["run", scriptName]);
+        } else {
+          let entryFile: string | null = null;
+          for (const f of ["app.js", "server.js", "index.js"]) {
+            try {
+              await instance.fs.readFile(f, "utf8");
+              entryFile = f;
+              break;
+            } catch {}
+          }
+          if (entryFile) {
+            startProcess = await instance.spawn("node", [entryFile]);
+          } else {
+            startProcess = await instance.spawn("npm", ["start"]);
+          }
+        }
+        activeDevProcessRef.current = startProcess;
+        if (terminalRef.current?.registerBackgroundProcess) {
+          terminalRef.current.registerBackgroundProcess(startProcess);
+        }
 
         instance.on("server-ready", (port: number, url: string) => {
           if (terminalRef.current?.writeToTerminal) {
@@ -229,11 +307,6 @@ const WebContainerPreview = ({
           }
           setPreviewUrl(url);
           setPreviewKey((prev) => prev + 1);
-          setLoadingState((prev) => ({
-            ...prev,
-            starting: false,
-            ready: true,
-          }));
           setIsSetupComplete(true);
           setIsSetupInProgress(false);
         });
@@ -256,18 +329,23 @@ const WebContainerPreview = ({
         }
         setSetupError(errorMessage);
         setIsSetupInProgress(false);
-        setLoadingState({
-          transforming: false,
-          mounting: false,
-          installing: false,
-          starting: false,
-          ready: false,
-        });
       }
     }
 
     setupContainer();
   }, [instance, templateData, isSetupComplete, isSetupInProgress]);
+
+  // Cleanup active dev process on unmount
+  useEffect(() => {
+    return () => {
+      if (activeDevProcessRef.current) {
+        try {
+          activeDevProcessRef.current.kill();
+        } catch {}
+        activeDevProcessRef.current = null;
+      }
+    };
+  }, []);
 
   // Silently reload preview when a file is saved
   useEffect(() => {
@@ -280,40 +358,13 @@ const WebContainerPreview = ({
     return () => clearTimeout(timer);
   }, [lastSavedAt, isSetupComplete]);
 
-  if (isLoading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4 max-w-md p-6 rounded-lg bg-gray-50 dark:bg-gray-900">
-          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-          <h3 className="text-lg font-medium">Initializing WebContainer</h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Setting up the environment for your project...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || setupError) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-lg max-w-md">
-          <div className="flex items-center gap-2 mb-3">
-            <XCircle className="h-5 w-5" />
-            <h3 className="font-semibold">Error</h3>
-          </div>
-          <p className="text-sm">{error || setupError}</p>
-        </div>
-      </div>
-    );
-  }
   const getStepIcon = (stepIndex: number) => {
     if (stepIndex < currentStep) {
-      return <CheckCircle className="h-5 w-5 text-green-500" />;
+      return <CheckCircle className="h-5 w-5 text-emerald-500" />;
     } else if (stepIndex === currentStep) {
-      return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />;
+      return <Loader2 className="h-5 w-5 animate-spin text-[#e93f3f]" />;
     } else {
-      return <div className="h-5 w-5 rounded-full border-2 border-gray-300" />;
+      return <div className="h-5 w-5 rounded-full border-2 border-zinc-300 dark:border-zinc-700" />;
     }
   };
 
@@ -325,10 +376,10 @@ const WebContainerPreview = ({
       <span
         className={`text-sm font-medium ${
           isComplete
-            ? "text-green-600"
+            ? "text-emerald-600 dark:text-emerald-400"
             : isActive
-              ? "text-blue-600"
-              : "text-gray-500"
+              ? "text-[#e93f3f] dark:text-[#ff5252]"
+              : "text-zinc-500 dark:text-zinc-400"
         }`}
       >
         {label}
@@ -337,66 +388,133 @@ const WebContainerPreview = ({
   };
 
   return (
-    <div className="h-full w-full flex flex-col">
-      {!previewUrl ? (
-        <div className="h-full flex flex-col">
-          <div className="w-full max-w-md p-6 m-5 rounded-lg bg-white dark:bg-zinc-800 shadow-sm mx-auto">
-            <Progress
-              value={(currentStep / totalSteps) * 100}
-              className="h-2 mb-6"
-            />
+    <div className="h-full w-full flex flex-col overflow-hidden">
+      <ResizablePanelGroup
+        orientation="vertical"
+        className="h-full w-full"
+      >
+        {/* Top Panel: Setup Progress or Live Preview iframe */}
+        <ResizablePanel
+          id="preview-window"
+          defaultSize={60}
+          minSize={15}
+          className="relative h-full w-full overflow-hidden"
+        >
+          {error || setupError ? (
+            <div className="h-full w-full flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 font-sans overflow-y-auto">
+              <div className="bg-white dark:bg-zinc-900 border border-rose-200 dark:border-rose-900/40 shadow-xl rounded-2xl p-6 max-w-lg w-full space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
+                    <XCircle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm text-zinc-900 dark:text-zinc-100">WebContainer Runtime Error</h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">The execution process encountered a failure</p>
+                  </div>
+                </div>
 
-            <div className="space-y-4 mb-6">
-              <div className="flex items-center gap-3">
-                {getStepIcon(1)}
-                {getStepText(1, "Transforming template data")}
-              </div>
-              <div className="flex items-center gap-3">
-                {getStepIcon(2)}
-                {getStepText(2, "Mounting files")}
-              </div>
-              <div className="flex items-center gap-3">
-                {getStepIcon(3)}
-                {getStepText(3, "Installing dependencies")}
-              </div>
-              <div className="flex items-center gap-3">
-                {getStepIcon(4)}
-                {getStepText(4, "Starting development server")}
+                <div className="p-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-950/80 border border-zinc-200 dark:border-zinc-800 font-mono text-xs text-rose-600 dark:text-rose-400 overflow-x-auto max-h-40 leading-relaxed whitespace-pre-wrap select-text">
+                  {error || setupError || "Unknown execution error"}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {onExplainError && (
+                    <button
+                      type="button"
+                      onClick={() => onExplainError(error || setupError || "Unknown execution error")}
+                      className="h-8 px-3 text-xs bg-rose-600 hover:bg-rose-700 text-white font-medium gap-1.5 rounded-lg shadow-sm flex items-center transition-colors"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      <span>Explain & Fix with AI</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="h-8 px-3 text-xs border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    <span>Reload Workspace</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          ) : !activePreviewUrl ? (
+            <div className="h-full w-full flex items-center justify-center p-4 bg-zinc-50/80 dark:bg-muted/10 overflow-y-auto transition-colors">
+              {isLoading ? (
+                <LoadingStep
+                  title="Initializing WebContainer"
+                  description="Setting up the in-browser runtime environment for your project..."
+                />
+              ) : isSetupComplete ? (
+                <div className="w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground">Editor Mode Active</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      No root <code className="text-foreground">package.json</code> was found. Files are mounted and ready for editing in Monaco and running commands in the terminal.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md transition-colors">
+                  <Progress
+                    value={(currentStep / totalSteps) * 100}
+                    className="h-2 mb-6 [&_[data-slot=progress-indicator]]:bg-[#E93F3F]"
+                  />
 
-          {/* Terminal */}
-          <div className="flex-1 p-4">
-            <TerminalComponent
-              ref={terminalRef}
-              webContainerInstance={instance}
-              theme="dark"
-              className="h-full"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="h-full flex flex-col">
-          <div className="flex-1">
+                  <div className="space-y-4 mb-2">
+                    <div className="flex items-center gap-3">
+                      {getStepIcon(1)}
+                      {getStepText(1, "Transforming template data")}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {getStepIcon(2)}
+                      {getStepText(2, "Mounting files")}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {getStepIcon(3)}
+                      {getStepText(3, "Installing dependencies")}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {getStepIcon(4)}
+                      {getStepText(4, "Starting development server")}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
             <iframe
               key={previewKey}
-              src={previewUrl}
+              src={activePreviewUrl}
               className="w-full h-full border-none"
               title="WebContainer Preview"
             />
-          </div>
+          )}
+        </ResizablePanel>
 
-          <div className="h-64 border-t">
-            <TerminalComponent
-              ref={terminalRef}
-              webContainerInstance={instance}
-              theme="dark"
-              className="h-full"
-            />
-          </div>
-        </div>
-      )}
+        {/* Resizable Handle between Preview & Terminal */}
+        <ResizableHandle withHandle />
+
+        {/* Bottom Panel: WebContainer Terminal (Permanently mounted to maintain output & session) */}
+        <ResizablePanel
+          id="terminal-window"
+          defaultSize={40}
+          minSize={15}
+          className={cn("h-full w-full flex flex-col overflow-hidden transition-colors", isDark ? "bg-zinc-950" : "bg-[#F8F9FA]")}
+        >
+          <TerminalComponent
+            ref={terminalRef}
+            webContainerInstance={instance}
+            theme={isDark ? "dark" : "light"}
+            className="h-full w-full"
+            onExplainError={onExplainError}
+          />
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   );
 };

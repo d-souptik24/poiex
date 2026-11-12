@@ -5,6 +5,8 @@ import {
     ChevronRight,
     File,
     Folder,
+    FolderOpen,
+    FolderTree,
     Plus,
     FilePlus,
     FolderPlus,
@@ -14,22 +16,11 @@ import {
 } from "lucide-react";
 
 import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
     Sidebar,
     SidebarContent,
     SidebarGroup,
-    SidebarGroupAction,
-    SidebarGroupContent,
-    SidebarGroupLabel,
-    SidebarMenu,
-    SidebarMenuButton,
-    SidebarMenuItem,
-    SidebarMenuSub,
     SidebarRail,
+    SidebarTrigger,
 } from "@/components/ui/sidebar";
 import {
     DropdownMenu,
@@ -38,8 +29,8 @@ import {
     DropdownMenuTrigger,
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 import RenameFolderDialog from "./dialogs/rename-folder-dialog";
 import NewFolderDialog from "./dialogs/new-folder-dialog";
@@ -79,7 +70,6 @@ export function TemplateFileTree({
     data,
     onFileSelect,
     selectedFile,
-    title = "Files Explorer",
     onAddFile,
     onAddFolder,
     onDeleteFile,
@@ -92,11 +82,13 @@ export function TemplateFileTree({
     const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] =
         React.useState(false);
 
-    const handleAddRootFile = () => {
+    const handleAddRootFile = (e: React.MouseEvent) => {
+        e.stopPropagation();
         setIsNewFileDialogOpen(true);
     };
 
-    const handleAddRootFolder = () => {
+    const handleAddRootFolder = (e: React.MouseEvent) => {
+        e.stopPropagation();
         setIsNewFolderDialogOpen(true);
     };
 
@@ -124,71 +116,94 @@ export function TemplateFileTree({
     };
 
     return (
-        <Sidebar>
-            <SidebarContent>
-                <SidebarGroup>
-                    <SidebarGroupLabel>{title}</SidebarGroupLabel>
+        <Sidebar className="border-r border-zinc-300 dark:border-zinc-800 bg-white dark:bg-[#0c0c0e] text-zinc-800 dark:text-zinc-300 transition-colors">
+            {/* Header: StackBlitz-style Files Bar (h-13 / 52px matches top nav) */}
+            <div className="flex h-13 shrink-0 items-center justify-between border-b border-zinc-300 dark:border-zinc-800 bg-zinc-100/70 dark:bg-[#09090b] px-3.5 select-none transition-colors">
+                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                    <FolderTree className="h-4 w-4 text-zinc-500 dark:text-zinc-400" />
+                    <span>Files Explorer</span>
+                </div>
+                <div className="flex items-center gap-1">
                     <DropdownMenu>
                         <DropdownMenuTrigger
                             render={
-                                <SidebarGroupAction>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    aria-label="Create file or folder"
+                                    className="h-8 w-8 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                                >
                                     <Plus className="h-4 w-4" />
-                                </SidebarGroupAction>
+                                </Button>
                             }
                         />
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={handleAddRootFile}>
-                                <FilePlus className="h-4 w-4 mr-2" />
-                                New File
+                        <DropdownMenuContent
+                            align="end"
+                            className="w-40 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-xl rounded-lg font-sans"
+                        >
+                            <DropdownMenuItem
+                                onClick={handleAddRootFile}
+                                className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                            >
+                                <FilePlus className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                <span>Create File</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleAddRootFolder}>
-                                <FolderPlus className="h-4 w-4 mr-2" />
-                                New Folder
+                            <DropdownMenuItem
+                                onClick={handleAddRootFolder}
+                                className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                            >
+                                <FolderPlus className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                <span>Create Folder</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <SidebarGroupContent>
-                        <SidebarMenu>
-                            {isRootFolder ? (
-                                (data as TemplateFolder).items.map((child) => {
-                                    const key =
-                                        "folderName" in child
-                                            ? `folder-${child.folderName}`
-                                            : `file-${child.filename}.${child.fileExtension}`;
-                                    return (
-                                        <TemplateNode
-                                            key={key}
-                                            item={child}
-                                            onFileSelect={onFileSelect}
-                                            selectedFile={selectedFile}
-                                            level={0}
-                                            path=""
-                                            onAddFile={onAddFile}
-                                            onAddFolder={onAddFolder}
-                                            onDeleteFile={onDeleteFile}
-                                            onDeleteFolder={onDeleteFolder}
-                                            onRenameFile={onRenameFile}
-                                            onRenameFolder={onRenameFolder}
-                                        />
-                                    );
-                                })
-                            ) : (
-                                <TemplateNode
-                                    item={data}
-                                    onFileSelect={onFileSelect}
-                                    selectedFile={selectedFile}
-                                    level={0}
-                                    path=""
-                                    onAddFile={onAddFile}
-                                    onAddFolder={onAddFolder}
-                                    onDeleteFile={onDeleteFile}
-                                    onDeleteFolder={onDeleteFolder}
-                                    onRenameFile={onRenameFile}
-                                    onRenameFolder={onRenameFolder}
-                                />
-                            )}
-                        </SidebarMenu>
-                    </SidebarGroupContent>
+
+                    <SidebarTrigger className="h-8 w-8 border-0 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 rounded-md" />
+                </div>
+            </div>
+
+            <SidebarContent className="no-scrollbar overflow-y-auto overflow-x-hidden">
+                <SidebarGroup className="p-0">
+                    <div className="flex flex-col w-full py-1">
+                        {isRootFolder ? (
+                            (data as TemplateFolder).items.map((child) => {
+                                const key =
+                                    "folderName" in child
+                                        ? `folder-${child.folderName}`
+                                        : `file-${child.filename}.${child.fileExtension}`;
+                                return (
+                                    <TemplateNode
+                                        key={key}
+                                        item={child}
+                                        onFileSelect={onFileSelect}
+                                        selectedFile={selectedFile}
+                                        level={0}
+                                        path=""
+                                        onAddFile={onAddFile}
+                                        onAddFolder={onAddFolder}
+                                        onDeleteFile={onDeleteFile}
+                                        onDeleteFolder={onDeleteFolder}
+                                        onRenameFile={onRenameFile}
+                                        onRenameFolder={onRenameFolder}
+                                    />
+                                );
+                            })
+                        ) : (
+                            <TemplateNode
+                                item={data}
+                                onFileSelect={onFileSelect}
+                                selectedFile={selectedFile}
+                                level={0}
+                                path=""
+                                onAddFile={onAddFile}
+                                onAddFolder={onAddFolder}
+                                onDeleteFile={onDeleteFile}
+                                onDeleteFolder={onDeleteFolder}
+                                onRenameFile={onRenameFile}
+                                onRenameFolder={onRenameFolder}
+                            />
+                        )}
+                    </div>
                 </SidebarGroup>
             </SidebarContent>
             <SidebarRail />
@@ -259,10 +274,14 @@ function TemplateNode({
         const file = item as TemplateFile;
         const fileName = `${file.filename}.${file.fileExtension}`;
 
-        const isSelected =
-            selectedFile &&
-            selectedFile.filename === file.filename &&
-            selectedFile.fileExtension === file.fileExtension;
+        const selectedFileId = (selectedFile as { id?: string } | undefined)?.id;
+        const fileId = (file as { id?: string }).id;
+        const isSelected = Boolean(
+            (selectedFileId && fileId && selectedFileId === fileId) ||
+            (selectedFile &&
+                selectedFile.filename === file.filename &&
+                selectedFile.fileExtension === file.fileExtension)
+        );
 
         const handleRename = () => {
             setIsRenameDialogOpen(true);
@@ -283,16 +302,29 @@ function TemplateNode({
         };
 
         return (
-            <SidebarMenuItem>
-                <div className="flex items-center group">
-                    <SidebarMenuButton
-                        isActive={isSelected}
-                        onClick={() => onFileSelect?.(file)}
-                        className="flex-1"
-                    >
-                        <File className="h-4 w-4 mr-2 shrink-0" />
-                        <span>{fileName}</span>
-                    </SidebarMenuButton>
+            <div className="relative w-full">
+                <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onFileSelect?.(file)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onFileSelect?.(file);
+                        }
+                    }}
+                    style={{ paddingLeft: `${14 + level * 16}px` }}
+                    className={cn(
+                        "group relative flex h-7.5 w-full items-center justify-between pr-2 text-[13px] select-none cursor-pointer rounded-none transition-colors duration-100",
+                        isSelected
+                            ? "bg-zinc-200/90 dark:bg-zinc-800 text-zinc-950 dark:text-zinc-100 font-semibold before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.75 before:bg-[#e93f3f]"
+                            : "text-zinc-800 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 hover:text-zinc-950 dark:hover:text-zinc-100 font-normal"
+                    )}
+                >
+                    <div className="flex items-center gap-2 min-w-0 flex-1 py-1">
+                        <File className={cn("h-4 w-4 mr-2 shrink-0", isSelected ? "text-zinc-950 dark:text-zinc-100" : "text-zinc-500 dark:text-zinc-400")} />
+                        <span className="truncate">{fileName}</span>
+                    </div>
 
                     <DropdownMenu>
                         <DropdownMenuTrigger
@@ -300,24 +332,32 @@ function TemplateNode({
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    aria-label={`Options for ${fileName}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-5 w-5 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                                 >
-                                    <MoreHorizontal className="h-3 w-3" />
+                                    <MoreHorizontal className="h-3.5 w-3.5" />
                                 </Button>
                             }
                         />
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={handleRename}>
-                                <Edit3 className="h-4 w-4 mr-2" />
-                                Rename
+                        <DropdownMenuContent
+                            align="end"
+                            className="w-40 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-xl rounded-lg font-sans"
+                        >
+                            <DropdownMenuItem
+                                onClick={handleRename}
+                                className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                            >
+                                <Edit3 className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                <span>Rename</span>
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
+                            <DropdownMenuSeparator className="my-1 bg-zinc-200 dark:bg-zinc-800" />
                             <DropdownMenuItem
                                 onClick={handleDelete}
-                                className="text-destructive"
+                                className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/30 focus:text-red-700 dark:focus:text-red-300 flex items-center gap-2 transition-colors"
                             >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
+                                <Trash2 className="h-3.5 w-3.5" />
+                                <span>Delete</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
@@ -341,18 +381,20 @@ function TemplateNode({
                     confirmLabel="Delete"
                     cancelLabel="Cancel"
                 />
-            </SidebarMenuItem>
+            </div>
         );
     } else {
         const folder = item as TemplateFolder;
         const folderName = folder.folderName;
         const currentPath = path ? `${path}/${folderName}` : folderName;
 
-        const handleAddFile = () => {
+        const handleAddFile = (e: React.MouseEvent) => {
+            e.stopPropagation();
             setIsNewFileDialogOpen(true);
         };
 
-        const handleAddFolder = () => {
+        const handleAddFolder = (e: React.MouseEvent) => {
+            e.stopPropagation();
             setIsNewFolderDialogOpen(true);
         };
 
@@ -398,63 +440,99 @@ function TemplateNode({
         };
 
         return (
-            <SidebarMenuItem>
-                <Collapsible
-                    open={isOpen}
-                    onOpenChange={setIsOpen}
-                    className="group/collapsible [&[data-state=open]>div>button>svg:first-child]:rotate-90"
+            <div className="relative w-full">
+                <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setIsOpen(!isOpen)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setIsOpen(!isOpen);
+                        }
+                    }}
+                    style={{ paddingLeft: `${10 + level * 16}px` }}
+                    className="group relative flex h-7.5 w-full items-center justify-between pr-2 text-[13px] text-zinc-800 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 hover:text-zinc-950 dark:hover:text-zinc-100 select-none cursor-pointer rounded-none transition-colors duration-100 font-medium"
                 >
-                    <div className="flex items-center group">
-                        <CollapsibleTrigger
-                            render={
-                                <SidebarMenuButton className="flex-1">
-                                    <ChevronRight className="transition-transform" />
-                                    <Folder className="h-4 w-4 mr-2 shrink-0" />
-                                    <span>{folderName}</span>
-                                </SidebarMenuButton>
-                            }
+                    <div className="flex items-center gap-1.5 min-w-0 flex-1 py-1">
+                        <ChevronRight
+                            className={cn(
+                                "h-3.5 w-3.5 text-zinc-400 dark:text-zinc-500 transition-transform duration-150 shrink-0",
+                                isOpen && "rotate-90 text-zinc-600 dark:text-zinc-400"
+                            )}
                         />
+                        {isOpen ? (
+                            <FolderOpen className="h-4 w-4 shrink-0 text-zinc-600 dark:text-zinc-400" />
+                        ) : (
+                            <Folder className="h-4 w-4 shrink-0 text-zinc-600 dark:text-zinc-400" />
+                        )}
+                        <span className="truncate font-medium">{folderName}</span>
+                    </div>
 
+                    <div
+                        className="flex items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <DropdownMenu>
                             <DropdownMenuTrigger
                                 render={
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        aria-label={`Options for folder ${folderName}`}
+                                        className="h-5 w-5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-850 rounded"
                                     >
-                                        <MoreHorizontal className="h-3 w-3" />
+                                        <MoreHorizontal className="h-3.5 w-3.5" />
                                     </Button>
                                 }
                             />
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={handleAddFile}>
-                                    <FilePlus className="h-4 w-4 mr-2" />
-                                    New File
+                            <DropdownMenuContent
+                                align="end"
+                                className="w-40 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-xl rounded-lg font-sans"
+                            >
+                                <DropdownMenuItem
+                                    onClick={handleAddFile}
+                                    className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                                >
+                                    <FilePlus className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                    <span>New File</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={handleAddFolder}>
-                                    <FolderPlus className="h-4 w-4 mr-2" />
-                                    New Folder
+                                <DropdownMenuItem
+                                    onClick={handleAddFolder}
+                                    className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                                >
+                                    <FolderPlus className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                    <span>New Folder</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={handleRename}>
-                                    <Edit3 className="h-4 w-4 mr-2" />
-                                    Rename
+                                <DropdownMenuSeparator className="my-1 bg-zinc-200 dark:bg-zinc-800" />
+                                <DropdownMenuItem
+                                    onClick={handleRename}
+                                    className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2 transition-colors"
+                                >
+                                    <Edit3 className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400" />
+                                    <span>Rename</span>
                                 </DropdownMenuItem>
-                                <DropdownMenuSeparator />
+                                <DropdownMenuSeparator className="my-1 bg-zinc-200 dark:bg-zinc-800" />
                                 <DropdownMenuItem
                                     onClick={handleDelete}
-                                    className="text-destructive"
+                                    className="cursor-pointer text-xs py-1.5 px-2.5 rounded text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/30 focus:text-red-700 dark:focus:text-red-300 flex items-center gap-2 transition-colors"
                                 >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                    <span>Delete</span>
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
+                </div>
 
-                    <CollapsibleContent>
-                        <SidebarMenuSub>
+                {isOpen && (
+                    <div className="relative">
+                        {/* Vertical tree indentation guide line */}
+                        <div
+                            className="absolute top-0 bottom-0 w-px bg-zinc-300/80 dark:bg-zinc-800/60 pointer-events-none"
+                            style={{ left: `${17 + level * 16}px` }}
+                        />
+                        <div className="flex flex-col w-full">
                             {folder.items.map((childItem) => {
                                 const childKey =
                                     "folderName" in childItem
@@ -478,9 +556,9 @@ function TemplateNode({
                                     />
                                 );
                             })}
-                        </SidebarMenuSub>
-                    </CollapsibleContent>
-                </Collapsible>
+                        </div>
+                    </div>
+                )}
 
                 <NewFileDialog
                     isOpen={isNewFileDialogOpen}
@@ -511,7 +589,7 @@ function TemplateNode({
                     confirmLabel="Delete"
                     cancelLabel="Cancel"
                 />
-            </SidebarMenuItem>
+            </div>
         );
     }
 }

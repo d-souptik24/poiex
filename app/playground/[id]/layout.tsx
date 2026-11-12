@@ -7,7 +7,7 @@ export default function PlaygroundLayout({
     children: React.ReactNode;
 }) {
     return (
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={true} cookieName="playground_sidebar_state">
             {children}
         </SidebarProvider>
     );

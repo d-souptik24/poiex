@@ -1,10 +1,22 @@
 "use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useCurrentUser } from "@/modules/auth/hooks/use-current-user";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
     DropdownMenuContent,
+    DropdownMenuGroup,
     DropdownMenuItem,
+    DropdownMenuLabel,
     DropdownMenuSeparator,
+    DropdownMenuSub,
+    DropdownMenuSubContent,
+    DropdownMenuSubTrigger,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -12,9 +24,9 @@ import {
     ResizablePanel,
     ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { Separator } from "@/components/ui/separator";
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePanelRef } from "react-resizable-panels";
+import { cn } from "@/lib/utils";
+import { SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import {
     Tooltip,
     TooltipContent,
@@ -28,18 +40,35 @@ import ToggleAI from "@/modules/playground/components/toggle-ai";
 import { useAISuggestions } from "@/modules/playground/hooks/useAISuggestion";
 import { useFileExplorer } from "@/modules/playground/hooks/useFileExplorer";
 import { usePlayground } from "@/modules/playground/hooks/usePlayground";
-import { findFilePath } from "@/modules/playground/lib";
+import { findFilePath, findFileByPath, findFirstFile, updateTemplateTreeWithFiles } from "@/modules/playground/lib";
 import {
     TemplateFile,
     TemplateFolder,
 } from "@/modules/playground/lib/path-to-json";
+import { EDITOR_THEMES } from "@/modules/playground/lib/editor-config";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useTheme } from "next-themes";
 import WebContainerPreview from "@/modules/webcontainers/components/webcontainer-preview";
 import { useWebContainer } from "@/modules/webcontainers/hooks/useWebContainer";
+import { AIChatSidePanel } from "@/modules/ai-chat/components/ai-chat-sidebarpanel";
+import { CodeDiffModal } from "@/modules/playground/components/code-diff-modal";
+import { exportProjectAsZip } from "@/modules/playground/lib/export-zip";
 import {
     AlertCircle,
-    Bot,
+    ArrowLeft,
+    ArrowLeftRight,
+    Download,
+    ChevronRight,
+    Check,
+    Eye,
+    EyeOff,
     FileText,
+    FileX,
     FolderOpen,
+
+
+    Palette,
+    RotateCcw,
     Save,
     Settings,
     X,
@@ -48,15 +77,103 @@ import { useParams } from "next/navigation";
 import React, {
     useCallback,
     useEffect,
-    useReducer,
     useRef,
     useState,
+    useSyncExternalStore,
 } from "react";
 import { toast } from "sonner";
 
+const themeListeners = new Set<() => void>();
+
+const subscribeTheme = (callback: () => void) => {
+    themeListeners.add(callback);
+    return () => {
+        themeListeners.delete(callback);
+    };
+};
+
+const getThemeSnapshot = () => {
+    try {
+        return localStorage.getItem("poiex-editor-theme") || "modern-dark";
+    } catch {
+        return "modern-dark";
+    }
+};
+
+const getServerThemeSnapshot = () => "modern-dark";
+
+const setEditorThemePreference = (newTheme: string) => {
+    try {
+        localStorage.setItem("poiex-editor-theme", newTheme);
+    } catch {
+        // Ignore access errors in private browsing/sandboxes
+    }
+    themeListeners.forEach((listener) => listener());
+};
+
 const MainPlaygroundPage = () => {
     const { id } = useParams<{ id: string }>();
-    const [isPreviewVisible, setIsPreviewVisible] = useState(true);
+    const user = useCurrentUser();
+    const { open } = useSidebar();
+    const { resolvedTheme } = useTheme();
+    const [isPreviewVisible, setIsPreviewVisible] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`poiex-preview-visible-${id}`);
+            return saved !== null ? saved === "true" : true;
+        } catch {
+            return true;
+        }
+    });
+    const previewPanelRef = usePanelRef();
+
+    const togglePreview = useCallback(() => {
+        const panel = previewPanelRef.current;
+        if (panel) {
+            if (panel.isCollapsed()) {
+                panel.expand();
+                setIsPreviewVisible(true);
+                try {
+                    localStorage.setItem(`poiex-preview-visible-${id}`, "true");
+                } catch {}
+            } else {
+                panel.collapse();
+                setIsPreviewVisible(false);
+                try {
+                    localStorage.setItem(`poiex-preview-visible-${id}`, "false");
+                } catch {}
+            }
+        } else {
+            setIsPreviewVisible((prev) => {
+                const next = !prev;
+                try {
+                    localStorage.setItem(`poiex-preview-visible-${id}`, String(next));
+                } catch {}
+                return next;
+            });
+        }
+    }, [previewPanelRef, id]);
+
+    const [isChatOpen, setIsChatOpen] = useState(() => {
+        try {
+            return localStorage.getItem(`poiex-chat-open-${id}`) === "true";
+        } catch {
+            return false;
+        }
+    });
+
+    const handleSetIsChatOpen = useCallback((open: boolean) => {
+        setIsChatOpen(open);
+        try {
+            localStorage.setItem(`poiex-chat-open-${id}`, String(open));
+        } catch {}
+    }, [id]);
+
+    // Pillar 3: Pending review state for "Apply to Editor"
+    const [pendingReview, setPendingReview] = useState<{
+        fileId: string;
+        filename: string;
+        originalContent: string;
+    } | null>(null);
 
     const { playgroundData, templateData, isLoading, error, saveTemplateData } =
         usePlayground(id);
@@ -80,7 +197,7 @@ const MainPlaygroundPage = () => {
         handleDeleteFolder,
         handleRenameFile,
         handleRenameFolder,
-        updateFileContent
+        updateFileContent,
     } = useFileExplorer();
 
     const {
@@ -92,17 +209,94 @@ const MainPlaygroundPage = () => {
     } = useWebContainer({ templateData });
 
     const [lastSavedAt, setLastSavedAt] = useState<number>(0);
+    const storedEditorTheme = useSyncExternalStore(
+        subscribeTheme,
+        getThemeSnapshot,
+        getServerThemeSnapshot
+    );
+
+    // Synchronize editor theme with global resolved theme:
+    // If the user's setting is "auto" (default), or if the stored theme was dark while in light mode (or vice versa),
+    // automatically select the matching modern theme.
+    const activeEditorTheme = React.useMemo(() => {
+        const isLight = resolvedTheme === "light";
+        if (storedEditorTheme === "auto" || !storedEditorTheme) {
+            return isLight ? "modern-light" : "modern-dark";
+        }
+        return storedEditorTheme;
+    }, [storedEditorTheme, resolvedTheme]);
     const lastSyncedContent = useRef<Map<string, string>>(new Map());
+    const hasRestoredFilesRef = useRef(false);
 
     useEffect(() => {
         setPlaygroundId(id);
+        hasRestoredFilesRef.current = false;
     }, [id, setPlaygroundId]);
 
+    // Persist open files and active file whenever they change
     useEffect(() => {
-        if (templateData && !openFiles.length) {
-            setTemplateData(templateData);
+        if (!id || !hasRestoredFilesRef.current) return;
+        try {
+            if (openFiles.length > 0) {
+                const ids = openFiles.map((f) => f.id);
+                localStorage.setItem(`poiex-open-files-${id}`, JSON.stringify(ids));
+                if (activeFileId) {
+                    localStorage.setItem(`poiex-active-file-${id}`, activeFileId);
+                }
+            } else {
+                localStorage.setItem(`poiex-open-files-${id}`, JSON.stringify([]));
+                localStorage.removeItem(`poiex-active-file-${id}`);
+            }
+        } catch {}
+    }, [id, openFiles, activeFileId]);
+
+    // Restore open files from localStorage once templateData is loaded
+    useEffect(() => {
+        if (!templateData || hasRestoredFilesRef.current) return;
+        setTemplateData(templateData);
+
+        try {
+            const rawSavedIds = localStorage.getItem(`poiex-open-files-${id}`);
+            const savedActiveId = localStorage.getItem(`poiex-active-file-${id}`);
+
+            if (rawSavedIds) {
+                const savedIds = JSON.parse(rawSavedIds) as string[];
+                if (Array.isArray(savedIds) && savedIds.length > 0) {
+                    for (const filePath of savedIds) {
+                        const fileNode = findFileByPath(filePath, templateData);
+                        if (fileNode) {
+                            openFile(fileNode);
+                        }
+                    }
+                    if (savedActiveId) {
+                        const activeNode = findFileByPath(savedActiveId, templateData);
+                        if (activeNode) {
+                            openFile(activeNode);
+                        }
+                    }
+                    hasRestoredFilesRef.current = true;
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error("Error restoring open files from storage:", e);
         }
-    }, [templateData, setTemplateData, openFiles.length]);
+
+        // If no saved files or first time visiting, open entry file
+        if (!openFiles.length) {
+            const entryFile =
+                findFileByPath("src/index.ts", templateData) ||
+                findFileByPath("index.ts", templateData) ||
+                findFileByPath("src/App.tsx", templateData) ||
+                findFileByPath("package.json", templateData) ||
+                findFirstFile(templateData);
+
+            if (entryFile) {
+                openFile(entryFile);
+            }
+        }
+        hasRestoredFilesRef.current = true;
+    }, [templateData, id, openFile, openFiles.length, setTemplateData]);
 
     // Create wrapper functions that pass saveTemplateData
     const wrappedHandleAddFile = useCallback(
@@ -158,7 +352,11 @@ const MainPlaygroundPage = () => {
     );
 
     const wrappedHandleRenameFolder = useCallback(
-        (folder: TemplateFolder, newFolderName: string, parentPath: string) => {
+        (
+            folder: TemplateFolder,
+            newFolderName: string,
+            parentPath: string
+        ) => {
             return handleRenameFolder(
                 folder,
                 newFolderName,
@@ -169,186 +367,268 @@ const MainPlaygroundPage = () => {
         [handleRenameFolder, saveTemplateData]
     );
 
+    const [diffModalState, setDiffModalState] = useState<{
+        isOpen: boolean;
+        filename: string;
+        originalCode: string;
+        modifiedCode: string;
+    }>({
+        isOpen: false,
+        filename: "",
+        originalCode: "",
+        modifiedCode: "",
+    });
+
+    const [isExportingZip, setIsExportingZip] = useState(false);
+    const [terminalDiagnosticPrompt, setTerminalDiagnosticPrompt] = useState<string>("");
+
     const activeFile = openFiles.find((file) => file.id === activeFileId);
-    const hasUnsavedChanges = openFiles.some((file) => file.hasUnsavedChanges);
 
-    const handleFileSelect = (file: TemplateFile) => {
-        openFile(file);
-    };
-
-    const handleSave = useCallback(
-        async (fileId?: string) => {
-            const targetFileId = fileId || activeFileId;
-            if (!targetFileId) return;
-
-            const latestExplorerState = useFileExplorer.getState();
-            const fileToSave =
-                latestExplorerState.openFiles.find((f) => f.id === targetFileId) ||
-                openFiles.find((f) => f.id === targetFileId);
-
-            if (!fileToSave) return;
-
-            const latestTemplateData = latestExplorerState.templateData;
-            if (!latestTemplateData) return;
-
-            try {
-                const filePath = findFilePath(fileToSave, latestTemplateData);
-                if (!filePath) {
-                    toast.error(
-                        `Could not find path for file: ${fileToSave.filename}.${fileToSave.fileExtension}`
-                    );
-                    return;
-                }
-
-                const updatedTemplateData = JSON.parse(
-                    JSON.stringify(latestTemplateData)
-                );
-
-                const updateFileContent = (
-                    items: (TemplateFile | TemplateFolder)[]
-                ): (TemplateFile | TemplateFolder)[] =>
-                    items.map((item) => {
-                        if ("folderName" in item) {
-                            return { ...item, items: updateFileContent(item.items) };
-                        } else if (
-                            item.filename === fileToSave.filename &&
-                            item.fileExtension === fileToSave.fileExtension
-                        ) {
-                            return { ...item, content: fileToSave.content };
-                        }
-                        return item;
-                    });
-                updatedTemplateData.items = updateFileContent(
-                    updatedTemplateData.items
-                );
-
-                // Sync with WebContainer
-                if (writeFileSync) {
-                    await writeFileSync(filePath, fileToSave.content);
-                    lastSyncedContent.current.set(fileToSave.id, fileToSave.content);
-                    if (instance && instance.fs) {
-                        await instance.fs.writeFile(filePath, fileToSave.content);
-                    }
-                }
-
-                await saveTemplateData(updatedTemplateData);
-                setTemplateData(updatedTemplateData);
-                // Update open files
-                const updatedOpenFiles = openFiles.map((f) =>
-                    f.id === targetFileId
-                        ? {
-                            ...f,
-                            content: fileToSave.content,
-                            originalContent: fileToSave.content,
-                            hasUnsavedChanges: false,
-                        }
-                        : f
-                );
-                setOpenFiles(updatedOpenFiles);
-                setLastSavedAt(Date.now());
-
-                toast.success(
-                    `Saved ${fileToSave.filename}.${fileToSave.fileExtension}`
-                );
-            } catch (error) {
-                console.error("Error saving file:", error);
-                toast.error(
-                    `Failed to save ${fileToSave.filename}.${fileToSave.fileExtension}`
-                );
-                throw error;
+    // Pillar 3: Agentic Apply to Editor
+    const handleApplyCode = useCallback(
+        (code: string) => {
+            if (!activeFileId || !activeFile) {
+                toast.error("Please open an active file to apply code.");
+                return;
             }
+
+            // Snapshot current content for instant 1-click revert
+            setPendingReview({
+                fileId: activeFile.id,
+                filename: `${activeFile.filename}.${activeFile.fileExtension}`,
+                originalContent: activeFile.content,
+            });
+
+            // Apply new code into editor and WebContainer
+            updateFileContent(activeFile.id, code);
+            if (writeFileSync && instance && templateData) {
+                const path = findFilePath(activeFile, templateData);
+                if (path) {
+                    writeFileSync(path.replace(/^\/+/, ""), code);
+                }
+            }
+            toast.info(
+                `Applied suggested changes to ${activeFile.filename}.${activeFile.fileExtension}. Review in editor.`,
+                {
+                    action: {
+                        label: "View in Editor",
+                        onClick: () => handleSetIsChatOpen(false),
+                    },
+                }
+            );
         },
-        [
-            activeFileId,
-            openFiles,
-            writeFileSync,
-            instance,
-            saveTemplateData,
-            setTemplateData,
-            setOpenFiles,
-        ]
+        [activeFileId, activeFile, updateFileContent, writeFileSync, instance, templateData, handleSetIsChatOpen]
     );
 
-    const handleSaveAll = async () => {
-        const unsavedFiles = openFiles.filter((f) => f.hasUnsavedChanges);
-
-        if (unsavedFiles.length === 0) {
-            toast.info("No unsaved changes");
-            return;
+    const handleAcceptCode = useCallback(async () => {
+        if (!pendingReview) return;
+        setPendingReview(null);
+        if (templateData) {
+            const filesToSync = [...openFiles];
+            if (activeFile && !filesToSync.some((f) => f.id === activeFile.id)) {
+                filesToSync.push(activeFile);
+            }
+            const updated = updateTemplateTreeWithFiles(templateData, filesToSync);
+            setTemplateData(updated);
+            await saveTemplateData(updated);
         }
+        toast.success("Changes accepted and saved.");
+    }, [pendingReview, templateData, openFiles, activeFile, saveTemplateData, setTemplateData]);
 
-        try {
-            await Promise.all(unsavedFiles.map((f) => handleSave(f.id)));
-            toast.success(`Saved ${unsavedFiles.length} file(s)`);
-        } catch (error) {
-            toast.error("Failed to save some files");
-        }
-    };
-
-
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key === "s") {
-                e.preventDefault()
-                handleSave()
+    const handleRejectCode = useCallback(() => {
+        if (!pendingReview) return;
+        updateFileContent(pendingReview.fileId, pendingReview.originalContent);
+        if (writeFileSync && instance && templateData && activeFile) {
+            const path = findFilePath(activeFile, templateData);
+            if (path) {
+                writeFileSync(path.replace(/^\/+/, ""), pendingReview.originalContent);
             }
         }
+        setPendingReview(null);
+        toast.info("Changes reverted to previous version.");
+    }, [pendingReview, updateFileContent, writeFileSync, instance, templateData, activeFile]);
+
+    const handleReviewDiff = useCallback(
+        (code: string) => {
+            if (!activeFile) {
+                toast.error("Please open an active file to review changes.");
+                return;
+            }
+            const originalCode = pendingReview ? pendingReview.originalContent : activeFile.content;
+            const modifiedCode = pendingReview ? activeFile.content : code;
+
+            setDiffModalState({
+                isOpen: true,
+                filename: `${activeFile.filename}.${activeFile.fileExtension}`,
+                originalCode,
+                modifiedCode,
+            });
+        },
+        [activeFile, pendingReview]
+    );
+
+    const handleAcceptDiff = useCallback(async () => {
+        if (!activeFileId || !activeFile) return;
+        const newCode = diffModalState.modifiedCode;
+        updateFileContent(activeFileId, newCode);
+        if (writeFileSync && instance && templateData) {
+            const path = findFilePath(activeFile, templateData);
+            if (path) {
+                await writeFileSync(path.replace(/^\/+/, ""), newCode);
+            }
+        }
+        if (templateData) {
+            const filesToSync = openFiles.map((f) =>
+                f.id === activeFileId ? { ...f, content: newCode } : f
+            );
+            const updated = updateTemplateTreeWithFiles(templateData, filesToSync);
+            setTemplateData(updated);
+            await saveTemplateData(updated);
+        }
+        setPendingReview(null);
+        toast.success(`Accepted and saved to ${diffModalState.filename}`);
+        setDiffModalState((prev) => ({ ...prev, isOpen: false }));
+    }, [
+        activeFileId,
+        activeFile,
+        diffModalState.modifiedCode,
+        diffModalState.filename,
+        updateFileContent,
+        writeFileSync,
+        instance,
+        templateData,
+        openFiles,
+        saveTemplateData,
+        setTemplateData,
+    ]);
+
+    const handleRejectDiff = useCallback(() => {
+        if (pendingReview) {
+            handleRejectCode();
+        }
+        setDiffModalState((prev) => ({ ...prev, isOpen: false }));
+        toast.info("Proposed changes dismissed.");
+    }, [pendingReview, handleRejectCode]);
+
+    const handleExportZip = useCallback(async () => {
+        if (!templateData) {
+            toast.error("Project files are not loaded yet.");
+            return;
+        }
+        try {
+            setIsExportingZip(true);
+            toast.loading("Packaging project as ZIP...", { id: "export-zip" });
+            await exportProjectAsZip(templateData, playgroundData?.title || "project");
+            toast.success("Project exported as ZIP", { id: "export-zip" });
+        } catch (err) {
+            console.error("ZIP export failed:", err);
+            toast.error("Failed to export project as ZIP", { id: "export-zip" });
+        } finally {
+            setIsExportingZip(false);
+        }
+    }, [templateData, playgroundData]);
+
+    const handleExplainTerminalError = useCallback(
+        (errorLogs: string) => {
+            const prompt = `I encountered this error in the terminal while running the project:\n\n\`\`\`\n${errorLogs}\n\`\`\`\n\nPlease diagnose the root cause and provide a surgical fix for the affected file.`;
+            setTerminalDiagnosticPrompt(prompt);
+            handleSetIsChatOpen(true);
+            toast.info("Terminal error loaded into AI Assistant.", {
+                description: "Review prompt and send to generate diagnosis.",
+            });
+        },
+        [handleSetIsChatOpen]
+    );
+
+    // Save all changes across open files by default
+    const handleSave = useCallback(async () => {
+        if (!templateData) return;
+
+        // Collect all open files that might have been modified
+        const filesToSync = [...openFiles];
+        if (activeFile && !filesToSync.some((f) => f.id === activeFile.id)) {
+            filesToSync.push(activeFile);
+        }
+
+        // Deep-clone and update the tree with the latest contents from openFiles
+        const updatedTemplate = updateTemplateTreeWithFiles(templateData, filesToSync);
+
+        // Sync every modified file to WebContainer disk
+        for (const file of filesToSync) {
+            const currentContent = file.content;
+            const lastSynced = lastSyncedContent.current.get(file.id);
+
+            if (currentContent !== lastSynced) {
+                if (writeFileSync && instance) {
+                    const path = findFilePath(file, updatedTemplate);
+                    if (path) {
+                        try {
+                            await writeFileSync(path, currentContent);
+                            lastSyncedContent.current.set(file.id, currentContent);
+                        } catch (err) {
+                            console.error(`Error syncing ${path} to WebContainer:`, err);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Persist the updated tree to the database!
+        try {
+            await saveTemplateData(updatedTemplate);
+            setTemplateData(updatedTemplate);
+            setLastSavedAt(Date.now());
+
+            // Update originalContent and clear unsaved changes flags
+            setOpenFiles(
+                openFiles.map((file) => ({
+                    ...file,
+                    originalContent: file.content,
+                    hasUnsavedChanges: false,
+                }))
+            );
+
+            toast.success("All changes saved");
+        } catch (err) {
+            console.error("Save error:", err);
+            toast.error("Failed to save changes");
+        }
+    }, [templateData, openFiles, activeFile, writeFileSync, instance, saveTemplateData, setTemplateData, setOpenFiles]);
+
+    // Keyboard shortcuts for save
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+                e.preventDefault();
+                handleSave();
+            }
+        };
+
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [handleSave]);
 
-    if (error) {
-        return (
-            <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
-                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                <h2 className="text-xl font-semibold text-red-600 mb-2">
-                    Something went wrong
-                </h2>
-                <p className="text-gray-600 mb-4">{error}</p>
-                <Button onClick={() => window.location.reload()} variant="destructive">
-                    Try Again
-                </Button>
-            </div>
-        );
-    }
+    const hasUnsavedChanges = openFiles.some((file) => file.hasUnsavedChanges);
 
-    // Loading state
     if (isLoading) {
         return (
-            <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
-                <div className="w-full max-w-md p-6 rounded-lg shadow-sm border">
-                    <h2 className="text-xl font-semibold mb-6 text-center">
-                        Loading Playground
-                    </h2>
-                    <div className="mb-8">
-                        <LoadingStep
-                            currentStep={1}
-                            step={1}
-                            label="Loading playground data"
-                        />
-                        <LoadingStep
-                            currentStep={2}
-                            step={2}
-                            label="Setting up environment"
-                        />
-                        <LoadingStep currentStep={3} step={3} label="Ready to code" />
-                    </div>
-                </div>
+            <div className="flex flex-1 w-full min-h-screen flex-col items-center justify-center bg-background">
+                <LoadingStep currentStep={1} step={1} label="Loading project playground..." />
             </div>
         );
     }
 
-    // No template data
-    if (!templateData) {
+    if (error) {
         return (
-            <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] p-4">
-                <FolderOpen className="h-12 w-12 text-amber-500 mb-4" />
-                <h2 className="text-xl font-semibold text-amber-600 mb-2">
-                    No template data available
-                </h2>
-                <Button onClick={() => window.location.reload()} variant="outline">
-                    Reload Template
-                </Button>
+            <div className="flex flex-1 w-full min-h-screen flex-col items-center justify-center bg-background p-6">
+                <div className="text-center space-y-4 max-w-md">
+                    <div className="flex items-center justify-center">
+                        <AlertCircle className="h-12 w-12 text-destructive" />
+                    </div>
+                    <h1 className="text-2xl font-bold">Failed to load playground</h1>
+                    <p className="text-muted-foreground">{error}</p>
+                    <Button onClick={() => window.location.reload()}>Try Again</Button>
+                </div>
             </div>
         );
     }
@@ -356,210 +636,484 @@ const MainPlaygroundPage = () => {
     return (
         <TooltipProvider>
             <>
-                <TemplateFileTree
-                    data={templateData!}
-                    onFileSelect={handleFileSelect}
-                    selectedFile={activeFile}
-                    title="File Explorer"
-                    onAddFile={wrappedHandleAddFile}
-                    onAddFolder={wrappedHandleAddFolder}
-                    onDeleteFile={wrappedHandleDeleteFile}
-                    onDeleteFolder={wrappedHandleDeleteFolder}
-                    onRenameFile={wrappedHandleRenameFile}
-                    onRenameFolder={wrappedHandleRenameFolder}
-                />
-                <SidebarInset>
-                    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-                        <SidebarTrigger className="-ml-1" />
-                        <Separator orientation="vertical" className="mr-2 h-4" />
+                {templateData && (
+                    <TemplateFileTree
+                        data={templateData}
+                        onFileSelect={openFile}
+                        selectedFile={activeFile}
+                        onAddFile={wrappedHandleAddFile}
+                        onAddFolder={wrappedHandleAddFolder}
+                        onDeleteFile={wrappedHandleDeleteFile}
+                        onDeleteFolder={wrappedHandleDeleteFolder}
+                        onRenameFile={wrappedHandleRenameFile}
+                        onRenameFolder={wrappedHandleRenameFolder}
+                    />
+                )}
+                                <SidebarInset className="flex flex-col h-screen overflow-hidden bg-background border-l border-zinc-300 dark:border-zinc-800">
+                    {/* Workspace Top Header (h-13 / 52px matches explorer bar) */}
+                    <header className="flex h-13 shrink-0 items-center justify-between border-b border-zinc-300 dark:border-zinc-800 px-4 bg-white dark:bg-zinc-950 select-none transition-colors">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            {!open && (
+                                <SidebarTrigger className="h-8 w-8 border-0 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md" />
+                            )}
 
-                        <div className="flex flex-1 items-center gap-2">
-                            <div className="flex flex-col flex-1">
-                                <h1 className="text-sm font-medium">
-                                    {playgroundData?.title || "Code Playground"}
-                                </h1>
-                                <p className="text-xs text-muted-foreground">
-                                    {openFiles.length} File(s) Open
-                                    {hasUnsavedChanges && " • Unsaved changes"}
-                                </p>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                                <Tooltip>
-                                    <TooltipTrigger
-                                        render={
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleSave()}
-                                                disabled={!activeFile || !activeFile.hasUnsavedChanges}
-                                            >
-                                                <Save className="h-4 w-4" />
-                                            </Button>
-                                        }
-                                    />
-                                    <TooltipContent>Save (Ctrl+S)</TooltipContent>
-                                </Tooltip>
-
-                                <Tooltip>
-                                    <TooltipTrigger
-                                        render={
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={handleSaveAll}
-                                                disabled={!hasUnsavedChanges}
-                                            >
-                                                <Save className="h-4 w-4" /> All
-                                            </Button>
-                                        }
-                                    />
-                                    <TooltipContent>Save All (Ctrl+Shift+S)</TooltipContent>
-                                </Tooltip>
-
-                                <ToggleAI
-                                    isEnabled={aiSuggestions.isEnabled}
-                                    onToggle={aiSuggestions.toggleEnabled}
-                                    suggestionLoading={aiSuggestions.isLoading}
-                                />
-
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger
-                                        render={
-                                            <Button size="sm" variant="outline">
-                                                <Settings className="h-4 w-4" />
-                                            </Button>
-                                        }
-                                    />
-                                    <DropdownMenuContent align="end">
-                                        <DropdownMenuItem
-                                            onClick={() => setIsPreviewVisible(!isPreviewVisible)}
+                            {/* Back to Dashboard Button */}
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <Link
+                                            href="/dashboard"
+                                            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+                                            aria-label="Back to Dashboard"
                                         >
-                                            {isPreviewVisible ? "Hide" : "Show"} Preview
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={closeAllFiles}>
-                                            Close All Files
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                            <ArrowLeft className="h-4 w-4" />
+                                        </Link>
+                                    }
+                                />
+                                <TooltipContent side="bottom" className="text-xs">
+                                    Back to Dashboard
+                                </TooltipContent>
+                            </Tooltip>
+
+                            {/* PoiEx Brand Logo */}
+                            <Link
+                                href="/dashboard"
+                                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity shrink-0"
+                                title="PoiEx Dashboard"
+                            >
+                                <Image
+                                    src="/logo.svg"
+                                    alt="PoiEx"
+                                    width={24}
+                                    height={24}
+                                    className="h-6 w-6 object-contain"
+                                />
+                            </Link>
+
+                            <span className="text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
+
+                            {/* User Profile Avatar */}
+                            <Avatar className="h-6 w-6 shrink-0 ring-1 ring-zinc-300 dark:ring-zinc-700" title={user?.name || "User"}>
+                                <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? undefined} />
+                                <AvatarFallback className="bg-purple-600 text-white text-[11px] font-semibold">
+                                    {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+                                </AvatarFallback>
+                            </Avatar>
+
+                            <span className="text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
+
+                            {/* Project Name with Icon */}
+                            <div className="flex items-center gap-2 text-zinc-900 dark:text-zinc-100 font-semibold text-xs select-none truncate">
+                                <FolderOpen className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
+                                <span className="truncate">{playgroundData?.title || "Project Playground"}</span>
                             </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleSave}
+                                            disabled={!hasUnsavedChanges}
+                                            className={cn(
+                                                "h-8 px-3 text-xs font-medium rounded-md gap-1.5 transition-colors",
+                                                hasUnsavedChanges
+                                                    ? "border-amber-500/60 text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100/60 dark:hover:bg-amber-500/20"
+                                                    : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100"
+                                            )}
+                                        >
+                                            <Save className="h-3.5 w-3.5" />
+                                            <span>Save</span>
+                                            {hasUnsavedChanges && (
+                                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                            )}
+                                        </Button>
+                                    }
+                                />
+                                <TooltipContent side="bottom" className="text-xs">Save all changes (Ctrl+S)</TooltipContent>
+                            </Tooltip>
+
+                            <Tooltip>
+                                <TooltipTrigger
+                                    render={
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleExportZip}
+                                            disabled={isExportingZip}
+                                            className="h-8 px-2.5 text-xs font-medium rounded-md gap-1.5 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors"
+                                        >
+                                            <Download className="h-3.5 w-3.5" />
+                                            <span className="hidden md:inline">Export ZIP</span>
+                                        </Button>
+                                    }
+                                />
+                                <TooltipContent side="bottom" className="text-xs">Download project as ready-to-run ZIP</TooltipContent>
+                            </Tooltip>
+
+                            <ToggleAI
+                                isEnabled={aiSuggestions.isEnabled}
+                                onToggle={aiSuggestions.toggleEnabled}
+                                suggestionLoading={aiSuggestions.isLoading}
+                                onOpenChat={() => handleSetIsChatOpen(true)}
+                            />
+
+                            <ThemeToggle />
+
+                            <DropdownMenu>
+                                <DropdownMenuTrigger
+                                    render={
+                                        <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                                            <Settings className="h-3.5 w-3.5" />
+                                        </Button>
+                                    }
+                                />
+                                <DropdownMenuContent
+                                    align="end"
+                                    className="w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                                >
+                                    <DropdownMenuGroup>
+                                        <DropdownMenuItem
+                                            onClick={togglePreview}
+                                            className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                        >
+                                            {isPreviewVisible ? (
+                                                <EyeOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            ) : (
+                                                <Eye className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            )}
+                                            <span>{isPreviewVisible ? "Hide Preview" : "Show Preview"}</span>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuSub>
+                                            <DropdownMenuSubTrigger
+                                                className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 data-popup-open:bg-zinc-100 dark:data-popup-open:bg-zinc-800 data-popup-open:text-zinc-950 dark:data-popup-open:text-zinc-100 data-open:bg-zinc-100 dark:data-open:bg-zinc-800 data-open:text-zinc-950 dark:data-open:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                            >
+                                                <Palette className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                                <span>Editor Theme</span>
+                                            </DropdownMenuSubTrigger>
+                                            <DropdownMenuSubContent
+                                                className="w-48 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                                            >
+                                                <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-400 tracking-wider uppercase font-mono">
+                                                    Themes
+                                                </DropdownMenuLabel>
+                                                {EDITOR_THEMES.map((theme) => (
+                                                    <DropdownMenuItem
+                                                        key={theme.id}
+                                                        onClick={() => setEditorThemePreference(theme.id)}
+                                                        className="cursor-pointer text-xs py-1.5 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center justify-between gap-3 transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <span
+                                                                className="h-3 w-3 rounded-full border border-zinc-700 shrink-0 shadow-inner"
+                                                                style={{ backgroundColor: theme.previewBg }}
+                                                            />
+                                                            <span className="truncate">{theme.label}</span>
+                                                        </div>
+                                                        {activeEditorTheme === theme.id && (
+                                                            <Check className="h-3.5 w-3.5 text-zinc-900 dark:text-zinc-100 shrink-0" />
+                                                        )}
+                                                    </DropdownMenuItem>
+                                                ))}
+                                            </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
+                                    </DropdownMenuGroup>
+
+                                    <DropdownMenuSeparator className="my-1.5 bg-zinc-200 dark:bg-zinc-800" />
+
+                                    <DropdownMenuGroup>
+                                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 tracking-wider uppercase font-mono">
+                                            Actions
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuItem
+                                            onClick={closeAllFiles}
+                                            className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/30 focus:text-red-700 dark:focus:text-red-300 flex items-center gap-2.5 transition-colors"
+                                        >
+                                            <FileX className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                                            <span>Close All Files</span>
+                                        </DropdownMenuItem>
+                                    </DropdownMenuGroup>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
                     </header>
 
-                    <div className="h-[calc(100vh-4rem)]">
-                        {openFiles.length > 0 ? (
-                            <div className="h-full flex flex-col">
-                                <div className="border-b bg-muted/30">
-                                    <Tabs
-                                        value={activeFileId || ""}
-                                        onValueChange={setActiveFileId}
-                                    >
-                                        <div className="flex items-center justify-between px-4 py-2">
-                                            <TabsList className="h-8 bg-transparent p-0">
-                                                {openFiles.map((file) => (
-                                                    <TabsTrigger
-                                                        key={file.id}
-                                                        value={file.id}
-                                                        className="relative h-8 px-3 data-[state=active]:bg-background data-[state=active]:shadow-sm group"
-                                                    >
-                                                        <div className="flex items-center gap-2">
+                    {/* Resizable Editor & Preview/Terminal Workspace */}
+                    <div className="flex-1 min-h-0 w-full overflow-hidden">
+                        <ResizablePanelGroup
+                            orientation="horizontal"
+                            className="h-full w-full"
+                        >
+                            {/* Editor Panel */}
+                            <ResizablePanel
+                                id="editor-panel"
+                                defaultSize={50}
+                                minSize={25}
+                            >
+                                {openFiles.length > 0 ? (
+                                    <div className="h-full flex flex-col bg-white dark:bg-[#0d1117] transition-colors">
+                                        {/* Editor Tab Bar */}
+                                        <div className="h-9 shrink-0 bg-zinc-100 dark:bg-[#0e0e11] border-b border-zinc-300 dark:border-zinc-800 flex items-center justify-between px-0 select-none overflow-x-auto no-scrollbar transition-colors">
+                                            <div className="flex items-center h-full">
+                                                {openFiles.map((file) => {
+                                                    const isActive = file.id === activeFileId;
+                                                    return (
+                                                        <div
+                                                            key={file.id}
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            onClick={() => setActiveFileId(file.id)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === "Enter" || e.key === " ") {
+                                                                    e.preventDefault();
+                                                                    setActiveFileId(file.id);
+                                                                }
+                                                            }}
+                                                            className={cn(
+                                                                "group relative h-9 px-3.5 flex items-center gap-2 border-r border-zinc-300 dark:border-zinc-800 select-none cursor-pointer transition-colors duration-100 shrink-0",
+                                                                isActive
+                                                                    ? "bg-white dark:bg-[#0d1117] text-zinc-900 dark:text-zinc-100 font-medium border-t-2 border-t-[#e93f3f] shadow-xs"
+                                                                    : "bg-transparent hover:bg-zinc-200/60 dark:hover:bg-white/3 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-200 border-t-2 border-t-transparent font-normal"
+                                                            )}
+                                                        >
                                                             <FileText className="h-3 w-3" />
-                                                            <span>
+                                                            <span className="text-xs max-w-37.5 truncate">
                                                                 {file.filename}.{file.fileExtension}
                                                             </span>
+
                                                             {file.hasUnsavedChanges && (
-                                                                <span className="h-2 w-2 rounded-full bg-orange-500" />
+                                                                <span
+                                                                    className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0"
+                                                                    title="Unsaved changes"
+                                                                />
                                                             )}
+
                                                             <span
-                                                                className="ml-2 h-4 w-4 hover:bg-destructive hover:text-destructive-foreground rounded-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                                                role="button"
+                                                                tabIndex={0}
+                                                                aria-label={`Close ${file.filename}.${file.fileExtension}`}
+                                                                className="ml-1 h-4 w-4 rounded flex items-center justify-center text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-800 transition-colors cursor-pointer opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
                                                                     closeFile(file.id);
+                                                                }}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === "Enter" || e.key === " ") {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        closeFile(file.id);
+                                                                    }
                                                                 }}
                                                             >
                                                                 <X className="h-3 w-3" />
                                                             </span>
                                                         </div>
-                                                    </TabsTrigger>
-                                                ))}
-                                            </TabsList>
+                                                    );
+                                                })}
+                                            </div>
 
                                             {openFiles.length > 1 && (
                                                 <Button
                                                     size="sm"
                                                     variant="ghost"
                                                     onClick={closeAllFiles}
-                                                    className="h-6 px-2 text-xs"
+                                                    className="h-6 px-2 mr-2 text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-800/60 rounded"
                                                 >
                                                     Close All
                                                 </Button>
                                             )}
                                         </div>
-                                    </Tabs>
-                                </div>
-                                <div className="flex-1">
-                                    <ResizablePanelGroup
-                                        orientation="horizontal"
-                                        className="h-full"
-                                    >
-                                        <ResizablePanel defaultSize={isPreviewVisible ? 50 : 100}>
+
+                                        {/* Breadcrumb Trail */}
+                                        {activeFile && (
+                                            <div className="h-7 shrink-0 bg-zinc-50 dark:bg-[#0d1117] border-b border-zinc-300 dark:border-zinc-800/60 px-3 flex items-center gap-1.5 text-[11px] font-mono select-none text-zinc-600 dark:text-zinc-400 transition-colors">
+                                                <span className="text-zinc-500 font-sans">{playgroundData?.title || "project"}</span>
+                                                {(() => {
+                                                    const activePath = templateData ? findFilePath(activeFile, templateData) : null;
+                                                    const segments = activePath ? activePath.split("/") : [`${activeFile.filename}.${activeFile.fileExtension}`];
+                                                    return segments.map((seg, idx) => {
+                                                        const isLast = idx === segments.length - 1;
+                                                        return (
+                                                            <React.Fragment key={idx}>
+                                                                <ChevronRight className="h-3 w-3 text-zinc-400 dark:text-zinc-600 shrink-0" />
+                                                                {isLast ? (
+                                                                    <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-200 font-medium">
+                                                                        <FileText className="h-3 w-3 text-zinc-500 dark:text-zinc-400" />
+                                                                        <span>{seg}</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-zinc-600 dark:text-zinc-400">{seg}</span>
+                                                                )}
+                                                            </React.Fragment>
+                                                        );
+                                                    });
+                                                })()}
+                                            </div>
+                                        )}
+
+                                        <div className="flex-1 min-h-0 relative bg-[#FAFBFC] dark:bg-[#0d1117] transition-colors">
+                                            {/* Floating In-Editor Review HUD (Thinner Oval Pill with Proper Naming) */}
+                                            {pendingReview && pendingReview.fileId === activeFileId && (
+                                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex items-center gap-2 h-8 px-3 rounded-full bg-zinc-950/95 dark:bg-[#121316]/95 backdrop-blur-md border border-zinc-700/80 shadow-[0_8px_24px_rgba(0,0,0,0.5)] text-xs whitespace-nowrap select-none animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                                    <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                                                        <span className="font-semibold text-zinc-100">{pendingReview.filename}</span>
+                                                        <span className="text-zinc-400">modified</span>
+                                                    </div>
+
+                                                    <div className="h-3.5 w-px bg-zinc-700/80 mx-0.5 shrink-0" />
+
+                                                    <div className="flex items-center gap-1">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleReviewDiff(activeFile?.content || "")}
+                                                            className="h-6 px-2 text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
+                                                            title="Review side-by-side diff"
+                                                        >
+                                                            <ArrowLeftRight className="h-2.5 w-2.5 text-cyan-400" />
+                                                            <span>Diff</span>
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={handleRejectCode}
+                                                            className="h-6 px-2 text-[11px] font-medium text-zinc-400 hover:text-rose-400 hover:bg-rose-500/15 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
+                                                            title="Revert changes"
+                                                        >
+                                                            <RotateCcw className="h-2.5 w-2.5" />
+                                                            <span>Revert</span>
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={handleAcceptCode}
+                                                            className="h-6 px-2.5 text-[11px] font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-xs flex items-center gap-1 transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                                                            title="Accept and keep changes"
+                                                        >
+                                                            <Check className="h-2.5 w-2.5" />
+                                                            <span>Keep</span>
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <PlaygroundEditor
                                                 activeFile={activeFile}
                                                 content={activeFile?.content || ""}
                                                 onContentChange={(value) =>
                                                     activeFileId && updateFileContent(activeFileId, value)
                                                 }
-                                                suggestion={aiSuggestions.suggestion}
-                                                suggestionLoading={aiSuggestions.isLoading}
-                                                suggestionPosition={aiSuggestions.position}
-                                                onAcceptSuggestion={(editor, monaco) => aiSuggestions.acceptSuggestion(editor, monaco)}
-
-                                                onRejectSuggestion={(editor) =>
-                                                    aiSuggestions.rejectSuggestion(editor)
-                                                }
-                                                onTriggerSuggestion={(type, editor) =>
-                                                    aiSuggestions.fetchSuggestion(
-                                                        type,
-                                                        editor,
-                                                        activeFile ? `${activeFile.filename}.${activeFile.fileExtension}` : undefined
-                                                    )
-                                                }
+                                                isAIEnabled={aiSuggestions.isEnabled}
+                                                editorTheme={activeEditorTheme}
                                             />
-                                        </ResizablePanel>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col h-full items-center justify-center text-muted-foreground p-8 select-none bg-zinc-50/70 dark:bg-[#0d1117] transition-colors">
+                                        <div className="flex flex-col items-center max-w-sm text-center">
+                                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 shadow-xs mb-4">
+                                                <FileText className="h-8 w-8 text-zinc-400 dark:text-zinc-500" />
+                                            </div>
+                                            <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-200 tracking-tight">
+                                                No files open
+                                            </h3>
+                                            <p className="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+                                                Select a file from the explorer sidebar to view or edit code
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </ResizablePanel>
 
-                                        {isPreviewVisible && (
-                                            <>
-                                                <ResizableHandle />
-                                                <ResizablePanel defaultSize={50}>
-                                                    <WebContainerPreview
-                                                        templateData={templateData}
-                                                        instance={instance}
-                                                        writeFileSync={writeFileSync}
-                                                        isLoading={containerLoading}
-                                                        error={containerError}
-                                                        serverUrl={serverUrl!}
-                                                        forceResetup={false}
-                                                        lastSavedAt={lastSavedAt}
-                                                    />
-                                                </ResizablePanel>
-                                            </>
-                                        )}
-                                    </ResizablePanelGroup>
+                            {/* Resizable Handle between Editor and Live Preview */}
+                            <ResizableHandle
+                                withHandle
+                                disabled={!isPreviewVisible}
+                                className={cn(!isPreviewVisible && "hidden")}
+                            />
+
+                            {/* Live Preview Panel (Kept permanently mounted to preserve WebContainer session & terminal) */}
+                            <ResizablePanel
+                                id="preview-panel"
+                                panelRef={previewPanelRef}
+                                defaultSize={50}
+                                minSize={20}
+                                collapsible={true}
+                                collapsedSize={0}
+                                onResize={(panelSize) => {
+                                    const isExpanded = panelSize.asPercentage > 0;
+                                    setIsPreviewVisible((prev) => {
+                                        if (prev !== isExpanded) {
+                                            try {
+                                                localStorage.setItem(`poiex-preview-visible-${id}`, String(isExpanded));
+                                            } catch {}
+                                            return isExpanded;
+                                        }
+                                        return prev;
+                                    });
+                                }}
+                                className={cn(
+                                    "overflow-hidden",
+                                    !isPreviewVisible && "pointer-events-none"
+                                )}
+                            >
+                                <div
+                                    className={cn(
+                                        "h-full w-full",
+                                        !isPreviewVisible && "invisible pointer-events-none"
+                                    )}
+                                >
+                                    <WebContainerPreview
+                                        key={id}
+                                        playgroundId={id}
+                                        templateData={templateData!}
+                                        instance={instance}
+                                        writeFileSync={writeFileSync}
+                                        isLoading={containerLoading}
+                                        error={containerError}
+                                        serverUrl={serverUrl!}
+                                        forceResetup={false}
+                                        lastSavedAt={lastSavedAt}
+                                        onExplainError={handleExplainTerminalError}
+                                    />
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col h-full items-center justify-center text-muted-foreground gap-4">
-                                <FileText className="h-16 w-16 text-gray-300" />
-                                <div className="text-center">
-                                    <p className="text-lg font-medium">No files open</p>
-                                    <p className="text-sm text-gray-500">
-                                        Select a file from the sidebar to start editing
-                                    </p>
-                                </div>
-                            </div>
-                        )}
+                            </ResizablePanel>
+                        </ResizablePanelGroup>
                     </div>
+
+                    {/* Dedicated AI Chat Window (Slide-Over Overlay) */}
+                    <AIChatSidePanel
+                        isOpen={isChatOpen}
+                        onClose={() => handleSetIsChatOpen(false)}
+                        activeFileName={
+                            activeFile
+                                ? `${activeFile.filename}.${activeFile.fileExtension}`
+                                : undefined
+                        }
+                        activeFileContent={activeFile?.content}
+                        onApplyCode={handleApplyCode}
+                        onReviewDiff={handleReviewDiff}
+                        initialPrompt={terminalDiagnosticPrompt}
+                        initialMode={terminalDiagnosticPrompt ? "fix" : "chat"}
+                        isDocked={false}
+                        playgroundId={id}
+                    />
+
+                    {/* Side-by-Side Monaco Code Diff Modal */}
+                    <CodeDiffModal
+                        isOpen={diffModalState.isOpen}
+                        onClose={() => setDiffModalState((prev) => ({ ...prev, isOpen: false }))}
+                        filename={diffModalState.filename}
+                        originalCode={diffModalState.originalCode}
+                        modifiedCode={diffModalState.modifiedCode}
+                        onAccept={handleAcceptDiff}
+                        onReject={handleRejectDiff}
+                        theme={activeEditorTheme}
+                    />
                 </SidebarInset>
             </>
         </TooltipProvider>

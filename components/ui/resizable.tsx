@@ -25,7 +25,7 @@ function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
 }
 
 function ResizableHandle({
-  withHandle,
+  withHandle = true,
   className,
   ...props
 }: ResizablePrimitive.SeparatorProps & {
@@ -35,13 +35,13 @@ function ResizableHandle({
     <ResizablePrimitive.Separator
       data-slot="resizable-handle"
       className={cn(
-        "relative flex w-px items-center justify-center bg-border ring-offset-background after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:rotate-90",
+        "group relative flex w-px items-center justify-center bg-zinc-300 dark:bg-zinc-800 ring-offset-background hover:bg-[#e93f3f]/50 data-[separator=active]:bg-[#e93f3f] cursor-col-resize aria-[orientation=horizontal]:cursor-row-resize transition-colors duration-150 after:absolute after:inset-y-0 after:left-1/2 after:w-3.5 after:-translate-x-1/2 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-3.5 aria-[orientation=horizontal]:after:w-full aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2 [&[aria-orientation=horizontal]>div]:h-1 [&[aria-orientation=horizontal]>div]:w-6 [&[aria-orientation=horizontal]>div]:rotate-0",
         className
       )}
       {...props}
     >
       {withHandle && (
-        <div className="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border" />
+        <div className="z-10 flex h-6 w-1 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-600 group-hover:bg-[#e93f3f] group-data-[separator=active]:bg-[#e93f3f] transition-colors duration-150 group-aria-[orientation=horizontal]:h-1 group-aria-[orientation=horizontal]:w-6" />
       )}
     </ResizablePrimitive.Separator>
   )
