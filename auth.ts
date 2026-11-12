@@ -27,8 +27,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                         image: user.image,
 
                         accounts: {
-                            // @ts-expect-error -- NextAuth account create nested type mismatch with Prisma
-                            create: {
+                                                        create: {
                                 type: account.type,
                                 provider: account.provider,
                                 providerAccountId: account.providerAccountId,
@@ -38,7 +37,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                                 token_type: account.token_type,
                                 scope: account.scope,
                                 id_token: account.id_token,
-                                session_state: account.session_state,
+                                session_state: account.session_state ? String(account.session_state) : null,
                             },
                         },
                     },
@@ -70,8 +69,19 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                             token_type: account.token_type,
                             scope: account.scope,
                             id_token: account.id_token,
-                            // @ts-expect-error -- session_state type mismatch in Prisma Account create
-                            sessionState: account.session_state,
+                            session_state: account.session_state ? String(account.session_state) : null,
+                        },
+                    });
+                } else if (account.access_token) {
+                    // Update tokens on subsequent logins
+                    await db.account.update({
+                        where: { id: existingAccount.id },
+                        data: {
+                            access_token: account.access_token,
+                            refresh_token: account.refresh_token ?? existingAccount.refresh_token,
+                            expires_at: account.expires_at ?? existingAccount.expires_at,
+                            scope: account.scope ?? existingAccount.scope,
+                            session_state: account.session_state ? String(account.session_state) : existingAccount.session_state,
                         },
                     });
                 }
