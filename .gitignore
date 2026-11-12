@@ -131,3 +131,8 @@ skills-lock.json
 # --- Template Starters (external cloned repo — not part of PoiEx source) ---
 /poiex-starters/
 
+# --- Test Suite & Test Execution Output ---
+/modules/test/
+/output/
+vitest.config.ts
+

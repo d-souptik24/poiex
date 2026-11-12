@@ -15,7 +15,7 @@ export default function HomeLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="relative min-h-screen flex flex-col overflow-x-hidden">
+        <div className="relative min-h-screen flex flex-col overflow-x-hidden bg-[#fafbfc] dark:bg-black transition-colors">
             <div
                 className={cn(
                     "pointer-events-none absolute inset-0 z-0",
@@ -24,7 +24,7 @@ export default function HomeLayout({
                     "dark:bg-[linear-gradient(to_right,#262626_1px,transparent_1px),linear-gradient(to_bottom,#262626_1px,transparent_1px)]",
                 )}
             />
-            <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-white mask-[radial-gradient(ellipse_at_center,transparent_20%,black)] dark:bg-black" />
+            <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-zinc-50/60 mask-[radial-gradient(ellipse_at_center,transparent_20%,black)] dark:bg-black" />
             <Header />
             <main className="relative z-10 flex-1 flex flex-col w-full">{children}</main>
             <Footer />
