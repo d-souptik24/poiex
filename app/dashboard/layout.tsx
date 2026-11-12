@@ -10,8 +10,6 @@ export default async function DashboardLayout({
 
     const playgroundData = await getAllPlaygroundForUser();
 
-    console.log("playgroundData", playgroundData);
-
     const technologyIconMap: Record<string, string> = {
         REACT: "Zap",
         NEXTJS: "Lightbulb",
@@ -31,12 +29,12 @@ export default async function DashboardLayout({
 
     return (
 
-        <SidebarProvider>
+        <SidebarProvider defaultOpen={true} cookieName="dashboard_sidebar_state">
 
             <div className="flex min-h-screen w-full overflow-x-hidden">
                 {/* Dashboard Sidebar */}
                 <DashboardSidebar initialPlaygroundData={formattedPlaygroundData} />
-                <main className="flex-1">{children}</main>
+                <main className="flex-1 bg-zinc-50/70 dark:bg-background transition-colors">{children}</main>
             </div>
         </SidebarProvider>
     )

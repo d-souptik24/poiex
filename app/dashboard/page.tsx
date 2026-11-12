@@ -8,15 +8,14 @@ import React from "react";
 
 const Page = async () => {
     const playgrounds = await getAllPlaygroundForUser();
-    console.log("Playgrounds:", playgrounds);
     return (
-        <div className="flex flex-col justify-start items-center min-h-screen mx-auto max-w-7xl px-4 py-10">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+        <div className="flex flex-col justify-start items-center min-h-screen mx-auto max-w-5xl px-4 sm:px-6 py-8 w-full">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
                 <AddNewButton />
                 <AddRepo />
             </div>
 
-            <div className="mt-10 flex flex-col justify-center items-center w-full">
+            <div className="mt-8 flex flex-col justify-center items-center w-full">
                 {playgrounds && playgrounds.length === 0 ? (
                     <EmptyState />
                 ) : (

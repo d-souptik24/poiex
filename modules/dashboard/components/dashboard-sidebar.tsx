@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -20,7 +20,6 @@ import {
     Database,
     FlameIcon,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import {
     Sidebar,
     SidebarContent,
@@ -61,14 +60,84 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
     const pathname = usePathname()
     const [starredPlaygrounds, setStarredPlaygrounds] = useState(initialPlaygroundData.filter((p) => p.starred))
     const [recentPlaygrounds, setRecentPlaygrounds] = useState(initialPlaygroundData)
+    const [prevData, setPrevData] = useState(initialPlaygroundData)
+
+    // Adjust state during render when server props change (React 19 pattern avoiding cascading renders)
+    if (prevData !== initialPlaygroundData) {
+        setPrevData(initialPlaygroundData)
+        setStarredPlaygrounds(initialPlaygroundData.filter((p) => p.starred))
+        setRecentPlaygrounds(initialPlaygroundData)
+    }
+
+    // Optimistic realtime updates (0ms latency without waiting for server response)
+    useEffect(() => {
+        const handleStarToggle = (event: Event) => {
+            const customEvent = event as CustomEvent<{ id: string; isMarked: boolean }>
+            const { id, isMarked } = customEvent.detail
+
+            setStarredPlaygrounds((prev) => {
+                if (isMarked) {
+                    if (prev.some((p) => p.id === id)) return prev
+                    const item = recentPlaygrounds.find((p) => p.id === id)
+                    if (item) {
+                        return [...prev, { ...item, starred: true }]
+                    }
+                    return prev
+                } else {
+                    return prev.filter((p) => p.id !== id)
+                }
+            })
+
+            setRecentPlaygrounds((prev) =>
+                prev.map((p) => (p.id === id ? { ...p, starred: isMarked } : p))
+            )
+        }
+
+        const handleProjectDelete = (event: Event) => {
+            const customEvent = event as CustomEvent<{ id: string }>
+            const { id } = customEvent.detail
+            setStarredPlaygrounds((prev) => prev.filter((p) => p.id !== id))
+            setRecentPlaygrounds((prev) => prev.filter((p) => p.id !== id))
+        }
+
+        window.addEventListener("poiex:star-toggle", handleStarToggle)
+        window.addEventListener("poiex:project-delete", handleProjectDelete)
+
+        return () => {
+            window.removeEventListener("poiex:star-toggle", handleStarToggle)
+            window.removeEventListener("poiex:project-delete", handleProjectDelete)
+        }
+    }, [recentPlaygrounds])
 
     return (
-        <Sidebar variant="inset" collapsible="icon" className="border-1 border-r">
-            <SidebarHeader>
-                <div className="flex items-center gap-2 px-4 py-3 justify-center">
-                    <Image src={"/logo.svg"} alt="logo" height={60} width={60} />
-                </div>
-
+        <Sidebar variant="inset" collapsible="icon" className="border-r border-zinc-200 dark:border-sidebar-border bg-white dark:bg-sidebar transition-colors">
+            <SidebarHeader className="pt-3 pb-1">
+                <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton
+                            size="lg"
+                            render={<Link href="/" />}
+                            tooltip="PoiEx Home"
+                            className="h-10 px-2 gap-2.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 transition-colors"
+                        >
+                            <div className="flex size-7 items-center justify-center shrink-0">
+                                <Image
+                                    src="/logo.svg"
+                                    alt="PoiEx Logo"
+                                    width={28}
+                                    height={28}
+                                    className="size-7 object-contain"
+                                    priority
+                                />
+                            </div>
+                            <div className="flex items-center min-w-0 group-data-[collapsible=icon]:hidden">
+                                <span className="font-bold text-[17px] tracking-tight text-zinc-900 dark:text-white">
+                                    PoiEx
+                                </span>
+                            </div>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
             </SidebarHeader>
             <SidebarContent>
                 <SidebarGroup>
@@ -175,6 +244,7 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
                     <SidebarMenuItem>
                         <SidebarMenuButton
                             render={<Link href="/settings" />}
+                            isActive={pathname === "/settings"}
                             tooltip="Settings"
                         >
                             <Settings className="h-4 w-4" />

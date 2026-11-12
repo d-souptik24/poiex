@@ -23,6 +23,7 @@ import {
     Clock,
     Check,
     Plus,
+    Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
@@ -35,7 +36,7 @@ type TemplateSelectionModalProps = {
         title: string;
         template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
         description?: string;
-    }) => void;
+    }) => void | Promise<void>;
 };
 
 interface TemplateOption {
@@ -147,6 +148,7 @@ const TemplateSelectionModal = ({
     const [searchQuery, setSearchQuery] = useState("");
     const [category, setCategory] = useState<Category>("all");
     const [projectName, setProjectName] = useState("");
+    const [isCreating, setIsCreating] = useState(false);
 
     const filteredTemplates = templates.filter((template) => {
         const matchesSearch =
@@ -172,31 +174,38 @@ const TemplateSelectionModal = ({
         }
     };
 
-    const handleCreateProject = () => {
-        if (selectedTemplate) {
-            const templateMap: Record<
-                string,
-                "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR"
-            > = {
-                react: "REACT",
-                nextjs: "NEXTJS",
-                express: "EXPRESS",
-                vue: "VUE",
-                hono: "HONO",
-                angular: "ANGULAR",
-            };
+    const handleCreateProject = async () => {
+        if (selectedTemplate && !isCreating) {
+            setIsCreating(true);
+            try {
+                const templateMap: Record<
+                    string,
+                    "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR"
+                > = {
+                    react: "REACT",
+                    nextjs: "NEXTJS",
+                    express: "EXPRESS",
+                    vue: "VUE",
+                    hono: "HONO",
+                    angular: "ANGULAR",
+                };
 
-            const template = templates.find((t) => t.id === selectedTemplate);
-            onSubmit({
-                title: projectName || `New ${template?.name} Project`,
-                template: templateMap[selectedTemplate] || "REACT",
-                description: template?.description
-            })
-            onClose();
-            // Reset state for next time
-            setStep("select");
-            setSelectedTemplate(null);
-            setProjectName("");
+                const template = templates.find((t) => t.id === selectedTemplate);
+                await onSubmit({
+                    title: projectName || `New ${template?.name} Project`,
+                    template: templateMap[selectedTemplate] || "REACT",
+                    description: template?.description
+                });
+                onClose();
+                // Reset state for next time
+                setStep("select");
+                setSelectedTemplate(null);
+                setProjectName("");
+            } catch (err) {
+                console.error("Error creating project:", err);
+            } finally {
+                setIsCreating(false);
+            }
         }
     };
 
@@ -439,14 +448,22 @@ const TemplateSelectionModal = ({
                         </div>
 
                         <div className="flex justify-between gap-3 mt-4 pt-4 border-t">
-                            <Button variant="outline" onClick={handleBack}>
+                            <Button variant="outline" onClick={handleBack} disabled={isCreating}>
                                 Back
                             </Button>
                             <Button
-                                className="bg-[#E93F3F] hover:bg-[#d03636] text-white"
+                                className="bg-[#E93F3F] hover:bg-[#d03636] text-white flex items-center gap-2"
                                 onClick={handleCreateProject}
+                                disabled={isCreating}
                             >
-                                Create Project
+                                {isCreating ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Creating...</span>
+                                    </>
+                                ) : (
+                                    "Create Project"
+                                )}
                             </Button>
                         </div>
                     </>
