@@ -13,6 +13,8 @@
   <img src="https://img.shields.io/badge/MIT_License-22c55e?style=flat-square" alt="MIT" />
 </p>
 
+[What is PoiEx?](#what-is-poiex) · [How it works](#how-it-works) · [Highlights](#highlights) · [Starters](#starters) · [Getting started](#getting-started) · [AI options](#ai-options)
+
 </div>
 
 ---
@@ -45,14 +47,16 @@ The core engine is WebContainers, a WebAssembly technology that runs a real Node
 
 ## Highlights
 
-- **Browser-native runtime**: Runs real Node.js and npm packages using WebContainers. No local setup or remote VMs required.
-- **Real interactive terminal**: A full bash shell with command history, clear, search, and package installation.
-- **Side-by-side diff review**: When AI suggests changes, you inspect the exact additions and deletions before clicking Accept or Reject.
-- **Terminal error fixes**: One click on "Explain & Fix with AI" when an npm command or dev server errors out feeds the logs to the assistant.
-- **GitHub import**: Connect your GitHub account to import your repositories and forks with one click, or paste any public repository link.
-- **Non-Node repo support**: Python, Go, Rust, or plain docs open smoothly in Editor Mode for browsing and editing.
-- **Client-side ZIP export**: Download your entire project as a `.zip` archive anytime directly from the browser, with no server round-trip.
-- **Private local AI**: Runs offline Fill-In-The-Middle completions via Ollama, with cloud fallbacks to Groq and Gemini.
+| Capability | How it works in PoiEx |
+|---|---|
+| **Browser-native runtime** | Runs real Node.js and npm packages using WebContainers. No local setup or remote VMs required. |
+| **Real interactive terminal** | A full bash shell with command history, clear, search, and package installation. |
+| **Side-by-side diff review** | When AI suggests changes, you inspect the exact additions and deletions before clicking Accept or Reject. |
+| **Terminal error fixes** | One click on "Explain & Fix with AI" when an npm command or dev server errors out feeds the logs to the assistant. |
+| **GitHub import** | Connect your GitHub account to import your repositories and forks with one click, or paste any public repository link. |
+| **Non-Node repo support** | Python, Go, Rust, or plain docs open smoothly in Editor Mode for browsing and editing. |
+| **Client-side ZIP export** | Download your entire project as a `.zip` archive anytime directly from the browser, with no server round-trip. |
+| **Private local AI** | Runs offline Fill-In-The-Middle completions via Ollama, with cloud fallbacks to Groq and Gemini. |
 
 ---
 
@@ -91,10 +95,15 @@ cp .env.example .env
 ```
 
 Add your values in `.env`:
-- `DATABASE_URL` (MongoDB Atlas connection string)
-- `AUTH_SECRET` (generate one with `openssl rand -base64 32`)
-- Optional OAuth credentials (`AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`)
-- Optional AI keys (`OLLAMA_BASE_URL` for local models, or `GEMINI_API_KEY` / `GROQ_API_KEY` for cloud)
+
+| Variable | Description | Required? |
+|---|---|:---:|
+| `DATABASE_URL` | MongoDB Atlas connection string | **Yes** |
+| `AUTH_SECRET` | NextAuth secret key (generate with `openssl rand -base64 32`) | **Yes** |
+| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | GitHub OAuth credentials for repository import & sign-in | Optional |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth credentials for sign-in | Optional |
+| `OLLAMA_BASE_URL` | Local Ollama daemon URL (defaults to `http://127.0.0.1:11434`) | Optional |
+| `GEMINI_API_KEY` / `GROQ_API_KEY` | Cloud AI provider keys for chat and debugging | Optional |
 
 ### 3. Initialize the database
 
@@ -114,7 +123,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## AI options
 
-PoiEx works without any AI keys configured. You get the complete editor, file manager, terminal, preview, and GitHub import out of the box.
+> [!TIP]
+> PoiEx works without any AI keys configured. You get the complete editor, file manager, terminal, preview, and GitHub import out of the box.
 
 If you choose to use AI:
 - **Local Ollama**: Fast inline ghost-text completions that run 100% on your machine (`qwen2.5-coder:1.5b-base`).
