@@ -79,6 +79,9 @@ model Playground  {
   //todo: add template files
   templateFiles TemplateFile[]
   chatSessions  ChatSession[]
+
+  @@index([userId])
+  @@index([userId, updatedAt])
 }
 
 model StarMark {
@@ -93,6 +96,8 @@ model StarMark {
   createdAt DateTime @default(now())
 
   @@unique([userId, playgroundId])
+  @@index([playgroundId])
+  @@index([userId])
 }
 
 model TemplateFile {
