@@ -122,12 +122,13 @@ export function updateTemplateTreeWithFiles<
         if (!folderFound) continue;
 
         const lastDotIndex = filenameWithExt.lastIndexOf(".");
-        const filename =
-            lastDotIndex !== -1
-                ? filenameWithExt.slice(0, lastDotIndex)
-                : filenameWithExt;
-        const fileExtension =
-            lastDotIndex !== -1 ? filenameWithExt.slice(lastDotIndex + 1) : "";
+        const hasExtension = lastDotIndex > 0;
+        const filename = hasExtension
+            ? filenameWithExt.slice(0, lastDotIndex)
+            : filenameWithExt;
+        const fileExtension = hasExtension
+            ? filenameWithExt.slice(lastDotIndex + 1)
+            : "";
 
         const targetFileNode = currentFolder.items.find(
             (item): item is TemplateFile =>

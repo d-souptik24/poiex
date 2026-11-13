@@ -67,6 +67,11 @@ const WebContainerPreview = ({
 
 
   useEffect(() => {
+    // `cancelled` prevents in-flight async ops from updating state after the
+    // effect has been cleaned up (e.g. when the user switches playgrounds or
+    // `forceResetup` fires before `setupContainer` finishes).
+    let cancelled = false;
+
     async function setupContainer() {
       if (!instance || isSetupComplete || isSetupInProgress) return;
 
@@ -109,6 +114,7 @@ const WebContainerPreview = ({
             }
 
             instance.on("server-ready", (port: number, url: string) => {
+              if (cancelled) return;
               if (terminalRef.current?.writeToTerminal) {
                 terminalRef.current.writeToTerminal(
                   `🌐 Reconnected to server at ${url}\r\n`,
@@ -157,7 +163,6 @@ const WebContainerPreview = ({
           );
         }
 
-        // @ts-expect-error templateData format is verified before mount
         const files = transformToWebContainerFormat(templateData);
         setCurrentStep(2);
 
@@ -300,6 +305,7 @@ const WebContainerPreview = ({
         }
 
         instance.on("server-ready", (port: number, url: string) => {
+          if (cancelled) return;
           if (terminalRef.current?.writeToTerminal) {
             terminalRef.current.writeToTerminal(
               `🌐 Server ready at ${url}\r\n`,
@@ -322,6 +328,7 @@ const WebContainerPreview = ({
           }),
         );
       } catch (err) {
+        if (cancelled) return;
         console.error("Error setting up container:", err);
         const errorMessage = err instanceof Error ? err.message : String(err);
         if (terminalRef.current?.writeToTerminal) {
@@ -333,7 +340,10 @@ const WebContainerPreview = ({
     }
 
     setupContainer();
-  }, [instance, templateData, isSetupComplete, isSetupInProgress]);
+    return () => {
+      cancelled = true;
+    };
+  }, [instance, templateData, isSetupComplete, isSetupInProgress, playgroundId, serverUrl]);
 
   // Cleanup active dev process on unmount
   useEffect(() => {

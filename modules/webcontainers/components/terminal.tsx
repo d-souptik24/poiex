@@ -126,6 +126,14 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   const historyIndex = useRef<number>(-1);
   const currentProcess = useRef<WebContainerProcess | null>(null);
   const backgroundProcess = useRef<WebContainerProcess | null>(null);
+  // Keep a ref to the WebContainer instance so that executeCommand and
+  // handleTerminalInput don't need it in their useCallback dep arrays.
+  // Without this, every parent re-render that changes webContainerInstance
+  // recreates those callbacks → recreates initializeTerminal → triggers the
+  // mount-only useEffect → disposes and rebuilds the whole terminal, losing
+  // all terminal history.
+  const webContainerRef = useRef<WebContainer | null | undefined>(webContainerInstance);
+  useEffect(() => { webContainerRef.current = webContainerInstance; }, [webContainerInstance]);
 
   const writePrompt = useCallback(() => {
     if (term.current) {
@@ -185,7 +193,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   }));
 
   const executeCommand = useCallback(async (command: string) => {
-    if (!webContainerInstance || !term.current) return;
+    if (!webContainerRef.current || !term.current) return;
 
     // Add to history
     if (command.trim() && commandHistory.current[commandHistory.current.length - 1] !== command) {
@@ -258,7 +266,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
         }
 
         try {
-          await webContainerInstance.fs.readdir(resolved);
+          await webContainerRef.current.fs.readdir(resolved);
           currentDirectory.current = resolved;
         } catch {
           term.current.writeln(`\r\ncd: no such file or directory: ${target}`);
@@ -289,7 +297,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
 
       // Execute in WebContainer
       term.current.writeln("");
-      const process = await webContainerInstance.spawn(cmd, args, {
+      const process = await webContainerRef.current.spawn(cmd, args, {
         cwd: currentDirectory.current || undefined,
         terminal: {
           cols: term.current.cols,
@@ -323,7 +331,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       }
       currentProcess.current = null;
     }
-  }, [webContainerInstance, writePrompt, scanForError]);
+  }, [writePrompt, scanForError]);
 
   const handleTerminalInput = useCallback(async (data: string) => {
     if (!term.current) return;
@@ -401,7 +409,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
         break;
 
       case '\t': { // Tab autocompletion
-        if (!webContainerInstance) break;
+        if (!webContainerRef.current) break;
         const line = currentLine.current;
         const lastSpaceIdx = line.lastIndexOf(" ");
         const prefix = lastSpaceIdx >= 0 ? line.slice(lastSpaceIdx + 1) : line;
@@ -417,7 +425,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
             searchDir = resolvePath(currentDirectory.current, dirPart) || "/";
           }
 
-          const entries = await webContainerInstance.fs.readdir(searchDir);
+          const entries = await webContainerRef.current.fs.readdir(searchDir);
           const matches = entries.filter((e) => e.startsWith(matchPrefix) && !e.startsWith("."));
 
           if (matches.length === 1) {
@@ -488,7 +496,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
         }
         break;
     }
-  }, [executeCommand, writePrompt, redrawLine, webContainerInstance]);
+  }, [executeCommand, writePrompt, redrawLine]);
 
   const initializeTerminal = useCallback(() => {
     if (!terminalRef.current || term.current) return;
@@ -704,7 +712,8 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
         term.current = null;
       }
     };
-  }, [initializeTerminal]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (term.current) {

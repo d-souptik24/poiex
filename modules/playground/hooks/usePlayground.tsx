@@ -41,17 +41,12 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
             const rawContent = data?.templateFiles?.[0]?.content;
 
             let parsedContent: unknown = rawContent;
-            if (typeof parsedContent === "string") {
+            while (typeof parsedContent === "string") {
                 try {
                     parsedContent = JSON.parse(parsedContent);
-                } catch (e) {
-                    console.error("Error parsing stringified templateFiles:", e);
+                } catch {
+                    break;
                 }
-            }
-            if (typeof parsedContent === "string") {
-                try {
-                    parsedContent = JSON.parse(parsedContent);
-                } catch {}
             }
 
             if (

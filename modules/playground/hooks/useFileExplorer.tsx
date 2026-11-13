@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { toast } from "sonner";
+import type { WebContainer } from "@webcontainer/api";
 
 import { TemplateFile, TemplateFolder } from "../lib/path-to-json";
 
@@ -36,14 +37,14 @@ interface FileExplorerState {
         newFile: TemplateFile,
         parentPath: string,
         writeFileSync: (filePath: string, content: string) => Promise<void>,
-        instance: any,
+        instance: WebContainer | null,
         saveTemplateData: (data: TemplateFolder) => Promise<void>
     ) => Promise<void>;
 
     handleAddFolder: (
         newFolder: TemplateFolder,
         parentPath: string,
-        instance: any,
+        instance: WebContainer | null,
         saveTemplateData: (data: TemplateFolder) => Promise<void>
     ) => Promise<void>;
 
@@ -402,8 +403,10 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
                     activeFileId: activeFileId === oldFileId ? newFileId : activeFileId,
                 });
 
-                // Use the passed saveTemplateData function
-                await saveTemplateData(updatedTemplateData);
+                // Use the passed saveTemplateData function if provided
+                if (typeof saveTemplateData === "function") {
+                    await saveTemplateData(updatedTemplateData);
+                }
                 toast.success(`Renamed file to: ${newFilename}.${newExtension}`);
             }
         } catch (error) {
@@ -446,8 +449,10 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
 
                 set({ templateData: updatedTemplateData });
 
-                // Use the passed saveTemplateData function
-                await saveTemplateData(updatedTemplateData);
+                // Use the passed saveTemplateData function if provided
+                if (typeof saveTemplateData === "function") {
+                    await saveTemplateData(updatedTemplateData);
+                }
                 toast.success(`Renamed folder to: ${newFolderName}`);
             }
         } catch (error) {
