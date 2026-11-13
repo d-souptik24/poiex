@@ -117,6 +117,8 @@ CLAUDE.md
 /walkthrough/
 /plan/
 /graphify-out/
+/.ua/
+/.understand-anything/
 skills-lock.json
 
 # --- Database, Storage & Runtime Artifacts ---
