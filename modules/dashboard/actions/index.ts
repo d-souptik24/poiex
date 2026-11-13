@@ -39,8 +39,8 @@ export const toggleStarMarked = async (
         revalidatePath("/dashboard");
         return { success: true, isMarked: isChecked };
     } catch (error) {
-        console.error("Error updating problem:", error);
-        return { success: false, error: "Failed to update problem" };
+        console.error("Error updating favorite:", error);
+        return { success: false, error: "Failed to update favorite" };
     }
 };
 
@@ -53,6 +53,9 @@ export const getAllPlaygroundForUser = async () => {
         const playground = await db.playground.findMany({
             where: {
                 userId: user.id,
+            },
+            orderBy: {
+                updatedAt: "desc",
             },
             include: {
                 user: true,
@@ -212,8 +215,21 @@ export const importGithubRepo = async (data: {
     title?: string;
 }) => {
     const user = await currentUser();
-    if (!user?.id) {
+    if (!user?.id && !user?.email) {
         throw new Error("Unauthorized. Please sign in to import a repository.");
+    }
+
+    let userId = user.id;
+    if (!userId && user.email) {
+        const dbUser = await db.user.findUnique({
+            where: { email: user.email },
+            select: { id: true },
+        });
+        userId = dbUser?.id;
+    }
+
+    if (!userId) {
+        throw new Error("User record not found");
     }
 
     const { repoUrl, branch, title } = data;
@@ -229,7 +245,7 @@ export const importGithubRepo = async (data: {
     const githubAccount = await db.account.findFirst({
         where: {
             OR: [
-                ...(user.id ? [{ userId: user.id, provider: { in: ["github", "GitHub"] } }] : []),
+                { userId, provider: { in: ["github", "GitHub"] } },
                 ...(user.email ? [{ user: { email: user.email }, provider: { in: ["github", "GitHub"] } }] : []),
             ],
         },
@@ -238,7 +254,10 @@ export const importGithubRepo = async (data: {
         },
     });
 
-    const token = githubAccount?.access_token || process.env.GITHUB_TOKEN;
+    // Use the user's own OAuth token only.
+    // The server-level GITHUB_TOKEN is intentionally NOT used here — it would
+    // allow importing private repos the user does not own.
+    const token = githubAccount?.access_token ?? undefined;
     const targetBranch = branch?.trim() || parsed.branch;
 
     const { templateFolder, detectedTemplate, defaultTitle, description } =
@@ -249,7 +268,7 @@ export const importGithubRepo = async (data: {
             title: title?.trim() || defaultTitle,
             description,
             template: detectedTemplate,
-            userId: user.id,
+            userId,
         },
     });
 
@@ -316,29 +335,43 @@ export const getUserGithubRepos = async (): Promise<GetUserReposResult> => {
     });
 
     const isLinked = !!githubAccount;
-    const token = githubAccount?.access_token || process.env.GITHUB_TOKEN;
+
+    // SECURITY: Only use the user's own OAuth token.
+    // Never fall back to the server-level GITHUB_TOKEN — that would leak the
+    // server admin's private repositories to any authenticated (but unlinked) user.
+    const token = githubAccount?.access_token ?? null;
 
     if (!token) {
         return {
             isConnected: false,
             linked: isLinked,
             repos: [],
-            error: isLinked ? "GitHub token missing or expired. Please reconnect your account." : undefined,
+            error: isLinked
+                ? "GitHub token missing or expired. Please reconnect your GitHub account."
+                : undefined,
         };
     }
 
     try {
-        const res = await fetch(
-            "https://api.github.com/user/repos?sort=updated&per_page=100&type=all",
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    Accept: "application/vnd.github.v3+json",
-                    "User-Agent": "PoiEx-IDE",
-                },
-                cache: "no-store",
-            }
-        );
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        let res: Response;
+        try {
+            res = await fetch(
+                "https://api.github.com/user/repos?sort=updated&per_page=100&type=all",
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        Accept: "application/vnd.github.v3+json",
+                        "User-Agent": "PoiEx-IDE",
+                    },
+                    signal: controller.signal,
+                    cache: "no-store",
+                }
+            );
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!res.ok) {
             if (res.status === 401 || res.status === 403) {
@@ -407,17 +440,31 @@ export const getUserConnectedAccounts = async (): Promise<{
     hasGoogle: boolean;
 }> => {
     const user = await currentUser();
-    if (!user?.id) {
+    if (!user?.id && !user?.email) {
         return { hasGithub: false, hasGoogle: false };
     }
 
+    let userId = user.id;
+    if (!userId && user.email) {
+        const dbUser = await db.user.findUnique({
+            where: { email: user.email },
+            select: { id: true },
+        });
+        userId = dbUser?.id;
+    }
+
     const accounts = await db.account.findMany({
-        where: { userId: user.id },
+        where: {
+            OR: [
+                ...(userId ? [{ userId }] : []),
+                ...(user.email ? [{ user: { email: user.email } }] : []),
+            ],
+        },
         select: { provider: true },
     });
 
     return {
-        hasGithub: accounts.some((a) => a.provider === "github"),
-        hasGoogle: accounts.some((a) => a.provider === "google"),
+        hasGithub: accounts.some((a) => a.provider.toLowerCase() === "github"),
+        hasGoogle: accounts.some((a) => a.provider.toLowerCase() === "google"),
     };
 };

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { currentUser } from "@/modules/auth/actions";
 
 export interface AIModelOption {
     id: string;
@@ -57,6 +58,13 @@ let ollamaCache: OllamaHealthCache | null = null;
 const CACHE_TTL_MS = 30_000; // 30 seconds
 
 export async function GET() {
+    // Require an authenticated session — prevents leaking provider availability
+    // info (which API keys are configured) to unauthenticated requests.
+    const user = await currentUser();
+    if (!user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const isProd = process.env.NODE_ENV === "production";
     const rawUrl = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
     const baseUrl = rawUrl.replace("localhost", "127.0.0.1");

@@ -174,7 +174,11 @@ export async function renameChatSession(
         return { success: false, error: "Unauthorized" };
     }
 
-    const cleanTitle = newTitle.trim();
+    if (!sessionId || typeof sessionId !== "string") {
+        return { success: false, error: "Invalid session ID" };
+    }
+
+    const cleanTitle = (newTitle || "").trim();
     if (!cleanTitle) {
         return { success: false, error: "Title cannot be empty" };
     }
@@ -217,6 +221,10 @@ export async function deleteChatSession(
     const user = await currentUser();
     if (!user?.id) {
         return { success: false, error: "Unauthorized" };
+    }
+
+    if (!sessionId || typeof sessionId !== "string") {
+        return { success: false, error: "Invalid session ID" };
     }
 
     try {

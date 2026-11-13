@@ -135,6 +135,16 @@ export async function POST(req: NextRequest) {
 
         const userId: string = user.id;
 
+        // Guard: reject payloads larger than 512 KB to prevent memory exhaustion
+        // in the serverless function before we even try to parse JSON.
+        const contentLength = Number(req.headers.get("content-length") ?? 0);
+        if (contentLength > 512_000) {
+            return NextResponse.json(
+                { error: "Request payload too large (max 512 KB)." },
+                { status: 413 }
+            );
+        }
+
         const body: ChatRequest = await req.json();
         const {
             message,
@@ -409,13 +419,19 @@ export async function POST(req: NextRequest) {
                 } else if (attempt.provider === "openrouter") {
                     if (!process.env.OPENROUTER_API_KEY?.trim()) continue;
 
+                    const orController = new AbortController();
+                    const timeoutId = setTimeout(() => orController.abort(), 4000);
+                    if (req.signal) {
+                        req.signal.addEventListener("abort", () => orController.abort(), { once: true });
+                    }
+
                     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
                         method: "POST",
                         headers: {
                             Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
                             "Content-Type": "application/json",
                         },
-                        signal: req.signal,
+                        signal: orController.signal,
                         body: JSON.stringify({
                             model: attempt.modelId,
                             messages: formattedMessages,
@@ -423,6 +439,8 @@ export async function POST(req: NextRequest) {
                             temperature: 0.2,
                         }),
                     });
+
+                    clearTimeout(timeoutId);
 
                     if (res.ok) {
                         activeProvider = attempt;
