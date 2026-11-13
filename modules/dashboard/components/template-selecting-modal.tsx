@@ -124,15 +124,15 @@ const templates: TemplateOption[] = [
         icon: "/angular-2.svg",
         color: "#DD0031",
         popularity: 3,
-        tags: ["React", "Fullstack", "JavaScript"],
+        tags: ["Angular", "Frontend", "TypeScript"],
         features: [
             "Reactive Data Binding",
             "Component System",
-            "Virtual DOM",
             "Dependency Injection",
             "TypeScript Support",
+            "RxJS Services",
         ],
-        category: "fullstack",
+        category: "frontend",
     },
 ];
 
@@ -192,7 +192,7 @@ const TemplateSelectionModal = ({
 
                 const template = templates.find((t) => t.id === selectedTemplate);
                 await onSubmit({
-                    title: projectName || `New ${template?.name} Project`,
+                    title: projectName.trim() || `New ${template?.name || "Project"}`,
                     template: templateMap[selectedTemplate] || "REACT",
                     description: template?.description
                 });

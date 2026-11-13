@@ -39,7 +39,11 @@ export const MarkedToggleButton = forwardRef<HTMLButtonElement, MarkedToggleButt
                 const res = await toggleStarMarked(id, newMarkedState)
                 const { success, error, isMarked: serverMarked } = res
 
-                if (serverMarked && !error && success) {
+                if (!success || error) {
+                    throw new Error(error || "Failed to update favorite")
+                }
+
+                if (serverMarked) {
                     toast.success("Added to Favorites successfully")
                 } else {
                     toast.success("Removed from Favorites successfully")

@@ -20,10 +20,18 @@ const AddNewButton = () => {
         template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
         description?: string;
     }) => {
-        const res = await createPlayground(data);
-        toast.success("Playground Created successfully")
-        setIsModalOpen(false)
-        router.push(`/playground/${res?.id}`)
+        try {
+            const res = await createPlayground(data);
+            if (!res?.id) {
+                toast.error("Failed to create playground");
+                return;
+            }
+            toast.success("Playground created successfully");
+            setIsModalOpen(false);
+            router.push(`/playground/${res.id}`);
+        } catch {
+            toast.error("Failed to create playground");
+        }
     }
 
 
@@ -61,7 +69,6 @@ const AddNewButton = () => {
                     />
                 </div>
             </div>
-            {/* TODO: uncomment when TemplateSelectingModal is created */}
             <TemplateSelectingModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}

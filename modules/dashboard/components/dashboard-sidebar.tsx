@@ -73,6 +73,7 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
     useEffect(() => {
         const handleStarToggle = (event: Event) => {
             const customEvent = event as CustomEvent<{ id: string; isMarked: boolean }>
+            if (!customEvent.detail) return
             const { id, isMarked } = customEvent.detail
 
             setStarredPlaygrounds((prev) => {
@@ -95,6 +96,7 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
 
         const handleProjectDelete = (event: Event) => {
             const customEvent = event as CustomEvent<{ id: string }>
+            if (!customEvent.detail) return
             const { id } = customEvent.detail
             setStarredPlaygrounds((prev) => prev.filter((p) => p.id !== id))
             setRecentPlaygrounds((prev) => prev.filter((p) => p.id !== id))
@@ -217,7 +219,7 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
                                         <SidebarMenuItem key={playground.id}>
                                             <SidebarMenuButton
                                                 render={<Link href={`/playground/${playground.id}`} />}
-                                                isActive={pathname === `playground/${playground.id}`}
+                                                isActive={pathname === `/playground/${playground.id}`}
                                                 tooltip={playground.name}
                                             >
                                                 {IconComponent && <IconComponent className="h-4 w-4" />}
@@ -229,7 +231,7 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
                             )}
                             <SidebarMenuItem>
                                 <SidebarMenuButton
-                                    render={<Link href="/playgrounds" />}
+                                    render={<Link href="/dashboard" />}
                                     tooltip="View all"
                                 >
                                     <span className="text-sm text-muted-foreground">View all playgrounds</span>

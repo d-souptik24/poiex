@@ -27,12 +27,14 @@ function RenameFolderDialog({
   currentFolderName,
 }: RenameFolderDialogProps) {
   const [folderName, setFolderName] = React.useState(currentFolderName);
+  const [prevOpen, setPrevOpen] = React.useState(isOpen);
 
-  React.useEffect(() => {
+  if (isOpen !== prevOpen) {
+    setPrevOpen(isOpen);
     if (isOpen) {
       setFolderName(currentFolderName);
     }
-  }, [isOpen, currentFolderName]);
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

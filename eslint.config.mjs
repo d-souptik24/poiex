@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     ".agents/**",
     "poiex-starters/**",
+    ".ua/**",
+    ".understand-anything/**",
+    "graphify-out/**",
+    "output/**",
   ]),
 ]);
 

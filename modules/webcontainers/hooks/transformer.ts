@@ -1,7 +1,7 @@
 interface TemplateItem {
-  filename: string;
-  fileExtension: string;
-  content: string;
+  filename?: string;
+  fileExtension?: string;
+  content?: string;
   folderName?: string;
   items?: TemplateItem[];
 }
@@ -27,6 +27,8 @@ export function transformToWebContainerFormat(template: {
   folderName: string;
   items: TemplateItem[];
 }): WebContainerFileSystem {
+  if (!template?.items) return {};
+
   function processItem(
     item: TemplateItem,
   ): WebContainerFile | WebContainerDirectory {
@@ -38,9 +40,11 @@ export function transformToWebContainerFormat(template: {
         const key = subItem.folderName
           ? subItem.folderName
           : subItem.fileExtension
-            ? `${subItem.filename}.${subItem.fileExtension}`
-            : subItem.filename;
-        directoryContents[key] = processItem(subItem);
+            ? `${subItem.filename || ""}.${subItem.fileExtension}`
+            : subItem.filename || "";
+        if (key) {
+          directoryContents[key] = processItem(subItem);
+        }
       });
 
       return {
@@ -50,7 +54,7 @@ export function transformToWebContainerFormat(template: {
       // This is a file
       return {
         file: {
-          contents: item.content,
+          contents: item.content || "",
         },
       };
     }
@@ -62,9 +66,11 @@ export function transformToWebContainerFormat(template: {
     const key = item.folderName
       ? item.folderName
       : item.fileExtension
-        ? `${item.filename}.${item.fileExtension}`
-        : item.filename;
-    result[key] = processItem(item);
+        ? `${item.filename || ""}.${item.fileExtension}`
+        : item.filename || "";
+    if (key) {
+      result[key] = processItem(item);
+    }
   });
 
   return result;

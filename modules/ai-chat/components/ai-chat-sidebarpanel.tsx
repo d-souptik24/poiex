@@ -722,9 +722,10 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
           const tokenChunks: string[] = [];
           let sseBuffer = "";
 
+          let isStreamDone = false;
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done || isStreamDone) break;
 
             sseBuffer += decoder.decode(value, { stream: true });
             const lines = sseBuffer.split("\n");
@@ -734,7 +735,10 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
               const trimmed = line.trim();
               if (!trimmed.startsWith("data: ")) continue;
               const jsonStr = trimmed.slice(6);
-              if (jsonStr === "[DONE]") break;
+              if (jsonStr === "[DONE]") {
+                isStreamDone = true;
+                break;
+              }
 
               try {
                 const parsed = JSON.parse(jsonStr);
@@ -777,6 +781,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                 }
               } catch {}
             }
+            if (isStreamDone) break;
           }
         } else {
           // Non-streaming JSON response fallback
@@ -843,15 +848,17 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
 
   const handleRetry = (errorIndex: number) => {
     let userText = "";
+    let userIndex = -1;
     for (let i = errorIndex - 1; i >= 0; i--) {
       if (messages[i].role === "user") {
         userText = messages[i].content;
+        userIndex = i;
         break;
       }
     }
     if (!userText) return;
 
-    setMessages((prev) => prev.filter((_, idx) => idx !== errorIndex));
+    setMessages((prev) => prev.filter((_, idx) => idx !== errorIndex && idx !== userIndex));
     sendPrompt(userText);
   };
 

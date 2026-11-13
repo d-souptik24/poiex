@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { format /*, parseISO */ } from "date-fns";
+import { format } from "date-fns";
 import type { Project } from "../types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -226,15 +226,12 @@ export default function ProjectTable({
                 const data = await getPlaygroundById(project.id);
                 const rawContent = data?.templateFiles?.[0]?.content;
                 let parsedContent: unknown = rawContent;
-                if (typeof parsedContent === "string") {
+                while (typeof parsedContent === "string") {
                     try {
                         parsedContent = JSON.parse(parsedContent);
-                    } catch {}
-                }
-                if (typeof parsedContent === "string") {
-                    try {
-                        parsedContent = JSON.parse(parsedContent);
-                    } catch {}
+                    } catch {
+                        break;
+                    }
                 }
                 if (
                     parsedContent &&
@@ -348,21 +345,21 @@ export default function ProjectTable({
                                 </TableCell>
                                 <TableCell className="py-3.5">
                                     <span className="text-xs text-muted-foreground font-mono">
-                                        {format(new Date(project.createdAt), "MMM dd, yyyy")}
+                                        {project.createdAt ? format(new Date(project.createdAt), "MMM dd, yyyy") : "—"}
                                     </span>
                                 </TableCell>
                                 <TableCell className="py-3.5 max-w-0">
                                     <div className="flex items-center gap-2 min-w-0 pr-2">
                                         <div className="w-6 h-6 rounded-full overflow-hidden border border-zinc-200 dark:border-zinc-700 shrink-0">
                                             <Image
-                                                src={project.user.image || "/placeholder.svg"}
-                                                alt={project.user.name}
+                                                src={project.user?.image || "/placeholder.svg"}
+                                                alt={project.user?.name || "User"}
                                                 width={24}
                                                 height={24}
                                                 className="object-cover"
                                             />
                                         </div>
-                                        <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate">{project.user.name}</span>
+                                        <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate">{project.user?.name || "Anonymous"}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell className="pr-5 py-3.5 text-right">
