@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { UserRole } from "@prisma/client";
 
 import authConfig from "./auth.config";
 import { db } from "./lib/db";
@@ -10,24 +11,48 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         /**
          * Handle user creation and account linking after a successful sign-in
          */
-        async signIn({ user, account, profile }) {
+        async signIn({ user, account }) {
             if (!user || !account) return false;
+
+            // Always persist latest OAuth tokens if the account already exists
+            if (account.provider && account.providerAccountId && account.access_token) {
+                try {
+                    await db.account.updateMany({
+                        where: {
+                            provider: account.provider,
+                            providerAccountId: account.providerAccountId,
+                        },
+                        data: {
+                            access_token: account.access_token,
+                            refresh_token: account.refresh_token,
+                            expires_at: account.expires_at,
+                            scope: account.scope,
+                            token_type: account.token_type,
+                        },
+                    });
+                } catch (error) {
+                    console.error("Failed to refresh OAuth tokens on sign in:", error);
+                }
+            }
+
+            const userEmail = user.email;
+            if (!userEmail) return true;
 
             // Check if the user already exists
             const existingUser = await db.user.findUnique({
-                where: { email: user.email! },
+                where: { email: userEmail },
             });
 
             // If user does not exist, create a new one
             if (!existingUser) {
                 const newUser = await db.user.create({
                     data: {
-                        email: user.email!,
+                        email: userEmail,
                         name: user.name,
                         image: user.image,
 
                         accounts: {
-                                                        create: {
+                            create: {
                                 type: account.type,
                                 provider: account.provider,
                                 providerAccountId: account.providerAccountId,
@@ -90,7 +115,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
             return true;
         },
 
-        async jwt({ token, user, account }) {
+        async jwt({ token }) {
             if (!token.sub) return token;
             const existingUser = await getUserById(token.sub);
 
@@ -110,8 +135,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                 session.user.id = token.sub;
             }
 
-            if (token.sub && session.user) {
-                session.user.role = token.role;
+            if (token.role && session.user) {
+                session.user.role = token.role as UserRole;
             }
 
             return session;
