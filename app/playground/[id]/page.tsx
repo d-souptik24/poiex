@@ -206,7 +206,7 @@ const MainPlaygroundPage = () => {
         error: containerError,
         instance,
         writeFileSync,
-    } = useWebContainer({ templateData });
+    } = useWebContainer();
 
     const [lastSavedAt, setLastSavedAt] = useState<number>(0);
     const storedEditorTheme = useSyncExternalStore(

@@ -1,10 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { WebContainer } from "@webcontainer/api";
-import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
-
-interface UseWebContainerProps {
-  templateData: TemplateFolder | null;
-}
 
 interface UseWebContaierReturn {
   serverUrl: string | null;
@@ -12,7 +7,8 @@ interface UseWebContaierReturn {
   error: string | null;
   instance: WebContainer | null;
   writeFileSync: (path: string, content: string) => Promise<void>;
-  destory: () => void;
+  /** Tears down the singleton WebContainer instance and resets state. */
+  destroy: () => void;
 }
 
 let webcontainerBootPromise: Promise<WebContainer> | null = null;
@@ -27,9 +23,7 @@ async function getBootedWebContainer(): Promise<WebContainer> {
   return webcontainerBootPromise;
 }
 
-export const useWebContainer = ({
-  templateData,
-}: UseWebContainerProps): UseWebContaierReturn => {
+export const useWebContainer = (): UseWebContaierReturn => {
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +41,10 @@ export const useWebContainer = ({
         setInstance(webcontainerInstance);
         setIsLoading(false);
 
-        webcontainerInstance.on("server-ready", (port: number, url: string) => {
+        // Register the server-ready listener. The `mounted` flag in the closure
+        // prevents stale state updates after unmount. WebContainer v1's .on()
+        // does not expose an .off() method, so the guard is our safety net.
+        webcontainerInstance.on("server-ready", (_port: number, url: string) => {
           if (mounted) {
             setServerUrl(url);
           }
@@ -98,7 +95,7 @@ export const useWebContainer = ({
     [instance]
   );
 
-  const destory = useCallback(() => {
+  const destroy = useCallback(() => {
     if (instance) {
       instance.teardown();
       setInstance(null);
@@ -107,5 +104,5 @@ export const useWebContainer = ({
     }
   }, [instance]);
 
-  return {serverUrl , isLoading , error , instance , writeFileSync , destory}
+  return { serverUrl, isLoading, error, instance, writeFileSync, destroy }
 };
