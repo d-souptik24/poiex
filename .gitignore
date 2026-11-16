@@ -130,8 +130,20 @@ skills-lock.json
 *.sqlite-journal
 *.dump
 
-# --- Template Starters (external cloned repo — not part of PoiEx source) ---
-/poiex-starters/
+# --- Template Starters (Track active templates required by app/api/template/[id]) ---
+/poiex-starters/*
+!/poiex-starters/angular
+!/poiex-starters/angular/**
+!/poiex-starters/express-simple
+!/poiex-starters/express-simple/**
+!/poiex-starters/hono-nodejs-starter
+!/poiex-starters/hono-nodejs-starter/**
+!/poiex-starters/nextjs-shadcn
+!/poiex-starters/nextjs-shadcn/**
+!/poiex-starters/vite-shadcn
+!/poiex-starters/vite-shadcn/**
+!/poiex-starters/vue
+!/poiex-starters/vue/**
 
 # --- Test Suite & Test Execution Output ---
 /modules/test/
