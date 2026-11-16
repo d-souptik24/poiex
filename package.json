@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "clean": "node -e \"['.next', 'node_modules'].forEach(p => fs.rmSync(p, {recursive: true, force: true}))\"",
+    "clean:cache": "node -e \"fs.rmSync('.next', {recursive: true, force: true})\""
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
