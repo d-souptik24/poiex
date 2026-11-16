@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/modules/auth/actions";
 
+// Max duration for autocomplete fallback cascade on Vercel
+export const maxDuration = 30;
+
 interface MonacopilotRequestBody {
   completionMetadata?: {
     textBeforeCursor?: string;
@@ -235,6 +238,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // CWE-400: Sanitize filename to prevent control character/newline injection and cap length
+    const sanitizedFilename =
+      typeof filename === "string"
+        ? filename.replace(/[\r\n\t]/g, "").slice(0, 120).trim() || undefined
+        : undefined;
+
     // Skip AI generation if both prefix and suffix are empty
     if (!prefix.trim() && !suffix.trim()) {
       return NextResponse.json({ completion: null, suggestion: "" });
@@ -246,7 +255,7 @@ export async function POST(request: NextRequest) {
     const windowedSuffix = suffix.length > 800 ? suffix.slice(0, 800) : suffix;
 
     // Check server-side LRU cache before making network calls
-    const cacheKey = `${filename || "code"}:${windowedPrefix.slice(-250)}>>>${windowedSuffix.slice(0, 60)}`;
+    const cacheKey = `${sanitizedFilename || "code"}:${windowedPrefix.slice(-250)}>>>${windowedSuffix.slice(0, 60)}`;
     const cached = getCachedCompletion(cacheKey);
     if (cached !== null) {
       return NextResponse.json({
@@ -259,7 +268,7 @@ export async function POST(request: NextRequest) {
     const suggestion = await generateAutocompleteCascade(
       windowedPrefix,
       windowedSuffix,
-      filename,
+      sanitizedFilename,
       request.signal
     );
 
@@ -285,8 +294,8 @@ export async function POST(request: NextRequest) {
 /**
  * Autocomplete Cascade:
  * 1. Local/Remote Ollama (`qwen2.5-coder:1.5b-base`, FIM prompt)
- * 2. Groq Cloud LPU (`openai/gpt-oss-20b`, capped at 256 tokens, temp: 0.1, low reasoning effort)
- * 3. Google Gemini (`gemini-flash-latest` / `gemma-4-26b-a4b-it`, maxOutputTokens: 200)
+ * 2. Groq Cloud LPU: Primary `qwen/qwen3.8-27b` (reasoning_effort: "none") -> Secondary `openai/gpt-oss-20b` (reasoning_effort: "low")
+ * 3. Google Gemini (`gemini-3.1-flash-lite` 500 RPD -> `gemini-3.5-flash-lite`, BLOCK_NONE)
  * 4. OpenRouter Free (`openrouter/free`, max_tokens: 200)
  */
 async function generateAutocompleteCascade(
@@ -310,24 +319,32 @@ async function generateAutocompleteCascade(
     if (ollamaResult) return ollamaResult;
   }
 
-  // 2. Fallback to Groq (openai/gpt-oss-20b)
-  if (process.env.GROQ_API_KEY?.trim()) {
+  // 2. Fallback to Groq (primary: qwen/qwen3.8-27b, secondary: openai/gpt-oss-20b)
+  const groqApiKey =
+    process.env.GROQ_AUTOCOMPLETE_KEY?.trim() ||
+    process.env.GROQ_API_KEY?.trim();
+  if (groqApiKey) {
     const groqResult = await generateFromGroq(
       prefix,
       suffix,
       filename,
-      clientSignal
+      clientSignal,
+      groqApiKey
     );
     if (groqResult) return groqResult;
   }
 
-  // 3. Fallback to Gemini
-  if (process.env.GEMINI_API_KEY?.trim()) {
+  // 3. Fallback to Gemini (gemini-3.1-flash-lite, preserving chat 3.5 bucket)
+  const geminiApiKey =
+    process.env.GEMINI_AUTOCOMPLETE_KEY?.trim() ||
+    process.env.GEMINI_API_KEY?.trim();
+  if (geminiApiKey) {
     const geminiResult = await generateFromGemini(
       prefix,
       suffix,
       filename,
-      clientSignal
+      clientSignal,
+      geminiApiKey
     );
     if (geminiResult) return geminiResult;
   }
@@ -436,83 +453,116 @@ async function generateFromOllama(
 }
 
 /**
- * Provider 2: Groq Cloud LPU (`openai/gpt-oss-20b`)
- * High-speed (~1,000 tok/s), output capped at 128 tokens, temp: 0.1.
+ * Provider 2: Groq Cloud LPU
+ * Exclusively uses qwen/qwen3.8-27b (with reasoning_effort: "none", 450 tok/s) and
+ * openai/gpt-oss-20b (with reasoning_effort: "low", 1,000 tok/s, max_tokens: 512)
+ * for autocomplete so chat models remain completely isolated.
  */
 async function generateFromGroq(
   prefix: string,
   suffix: string,
   filename?: string,
-  clientSignal?: AbortSignal
+  clientSignal?: AbortSignal,
+  apiKey?: string
 ): Promise<string> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
+  const resolvedApiKey =
+    apiKey ||
+    process.env.GROQ_AUTOCOMPLETE_KEY?.trim() ||
+    process.env.GROQ_API_KEY?.trim();
+  if (!resolvedApiKey) return "";
 
-    if (clientSignal) {
-      clientSignal.addEventListener("abort", () => controller.abort(), {
-        once: true,
-      });
-    }
+  const models = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"];
 
-    const response = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: "openai/gpt-oss-20b",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an inline code autocompletion engine.\n" +
-                "Given the code prefix and suffix around the cursor, output ONLY the exact code characters that belong at the cursor position.\n" +
-                "Rules:\n" +
-                "1. Output ONLY pure raw code. Do NOT include markdown code fences, backticks, comments, or explanations.\n" +
-                "2. If no completion is appropriate, return an empty string.",
-            },
-            {
-              role: "user",
-              content: `File: ${filename || "code"}\n\n[CODE_BEFORE_CURSOR]\n${prefix}\n\n[CODE_AFTER_CURSOR]\n${suffix}\n\n[COMPLETION]`,
-            },
-          ],
-          temperature: 0.1,
-          max_tokens: 256,
-          reasoning_effort: "low",
-          stop: ["\n\n", "```"],
-        }),
+  for (const model of models) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      if (clientSignal) {
+        clientSignal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
       }
-    );
 
-    clearTimeout(timeoutId);
+      const isQwen = model.includes("qwen");
+      const bodyPayload: Record<string, unknown> = {
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an inline code autocompletion engine.\n" +
+              "Given the code prefix and suffix around the cursor, output ONLY the exact code characters that belong at the cursor position.\n" +
+              "Rules:\n" +
+              "1. Output ONLY pure raw code. Do NOT include markdown code fences, backticks, comments, or explanations.\n" +
+              "2. If no completion is appropriate, return an empty string.",
+          },
+          {
+            role: "user",
+            content: `File: ${filename || "code"}\n\n[CODE_BEFORE_CURSOR]\n${prefix}\n\n[CODE_AFTER_CURSOR]\n${suffix}\n\n[COMPLETION]`,
+          },
+        ],
+        temperature: 0.1,
+        // Qwen supports reasoning_effort: "none" which completely disables thinking tokens (prevents ghost text starvation)
+        // For GPT-OSS, reasoning cannot be completely disabled, so we allocate 512 tokens with "low" effort
+        max_tokens: isQwen ? 128 : 512,
+        stop: ["\n\n", "```"],
+        reasoning_effort: isQwen ? "none" : "low",
+      };
 
-    if (!response.ok) {
-      return "";
+      const response = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resolvedApiKey}`,
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify(bodyPayload),
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = await response.json();
+      const rawContent: string = data.choices?.[0]?.message?.content || "";
+      const cleaned = cleanGhostTextCompletion(rawContent, suffix);
+      if (cleaned) return cleaned;
+    } catch {
+      continue;
     }
-
-    const data = await response.json();
-    const rawContent: string = data.choices?.[0]?.message?.content || "";
-    return cleanGhostTextCompletion(rawContent, suffix);
-  } catch {
-    return "";
   }
+
+  return "";
 }
 
 /**
  * Provider 3: Google Gemini
+ * Uses dedicated gemini-3.1-flash-lite (independent 500 RPD bucket, active until May 2027)
+ * with BLOCK_NONE, leaving gemini-3.5-flash-lite and gemini-3.8-flash for Chat without quota collision.
  */
 async function generateFromGemini(
   prefix: string,
   suffix: string,
   filename?: string,
-  clientSignal?: AbortSignal
+  clientSignal?: AbortSignal,
+  apiKey?: string
 ): Promise<string> {
-  const models = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3-flash-preview"];
+  const resolvedApiKey =
+    apiKey ||
+    process.env.GEMINI_AUTOCOMPLETE_KEY?.trim() ||
+    process.env.GEMINI_API_KEY?.trim();
+  if (!resolvedApiKey) return "";
+
+  const models = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+  ];
 
   for (const model of models) {
     try {
@@ -531,7 +581,7 @@ async function generateFromGemini(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-goog-api-key": (process.env.GEMINI_API_KEY || "").trim(),
+            "x-goog-api-key": resolvedApiKey,
           },
           signal: controller.signal,
           body: JSON.stringify({
@@ -549,6 +599,12 @@ async function generateFromGemini(
               maxOutputTokens: 200,
               stopSequences: ["\n\n", "```"],
             },
+            safetySettings: [
+              { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+              { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+            ],
           }),
         }
       );
