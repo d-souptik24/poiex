@@ -357,7 +357,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
   const isFullScreen = true;
 
   // Curated model state
-  const [model, setModel] = useState<string>("openai/gpt-oss-120b");
+  const [model, setModel] = useState<string>("gemini-3.5-flash-lite");
   const [availableModels, setAvailableModels] = useState<AIModelOption[]>([]);
   const [isModelLoading, setIsModelLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -381,7 +381,13 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
         const fetchedModels: AIModelOption[] = data.models || [];
         setAvailableModels(fetchedModels);
 
-        const saved = localStorage.getItem("poiex-ai-model");
+        let saved = localStorage.getItem("poiex-ai-model");
+        if (saved === "poiex3.0-uncensored:2B") {
+          saved = "poiex3.0-uncensored";
+          try {
+            localStorage.setItem("poiex-ai-model", "poiex3.0-uncensored");
+          } catch {}
+        }
         const savedModelObj = saved
           ? fetchedModels.find((m) => m.id === saved)
           : undefined;
@@ -389,7 +395,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
         if (saved && savedModelObj && savedModelObj.isAvailable) {
           setModel(saved);
         } else if (savedModelObj && !savedModelObj.isAvailable) {
-          const fallback = data.defaultModel || "openai/gpt-oss-120b";
+          const fallback = data.defaultModel || "gemini-3.5-flash-lite";
           setModel(fallback);
           try {
             localStorage.setItem("poiex-ai-model", fallback);

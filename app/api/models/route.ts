@@ -17,23 +17,13 @@ const CURATED_MODELS: {
 }[] = [
     {
         id: "gemini-3.5-flash-lite",
-        name: "Gemini 3.5 Flash Lite",
+        name: "Gemini 3.5 Flash-Lite",
         provider: "gemini",
         recommended: true,
     },
     {
-        id: "gemini-3.1-flash-lite",
-        name: "Gemini 3.1 Flash Lite",
-        provider: "gemini",
-    },
-    {
         id: "openai/gpt-oss-120b",
         name: "GPT-OSS 120B",
-        provider: "groq",
-    },
-    {
-        id: "openai/gpt-oss-20b",
-        name: "GPT-OSS 20B",
         provider: "groq",
     },
     {
@@ -42,8 +32,8 @@ const CURATED_MODELS: {
         provider: "openrouter",
     },
     {
-        id: "qwen2.5-coder:3b",
-        name: "Qwen 2.5 Coder (3B)",
+        id: "poiex3.0-uncensored",
+        name: "PoiEx 3.0 Uncensored",
         provider: "local",
     },
 ];
@@ -128,7 +118,10 @@ export async function GET() {
     const models: AIModelOption[] = CURATED_MODELS.map((curated) => {
         let isAvailable = false;
 
-        if (curated.provider === "local") {
+        if (curated.id === "poiex3.0-uncensored") {
+            // Uncensored model is available whenever cloud AI keys (Gemini/Groq/OpenRouter) or local daemon are active
+            isAvailable = isGeminiConfigured || isGroqConfigured || isOpenRouterConfigured || isOllamaOnline;
+        } else if (curated.provider === "local") {
             const hasTag =
                 installedTagSet.has(curated.id) ||
                 installedTagSet.has(`${curated.id}:latest`) ||
@@ -157,14 +150,10 @@ export async function GET() {
         defaultModel = "gemini-3.5-flash-lite";
     } else if (isGroqConfigured) {
         defaultModel = "openai/gpt-oss-120b";
-    } else if (
-        isOllamaOnline &&
-        (installedTagSet.has("qwen2.5-coder:3b") ||
-         installedTagSet.size === 0)
-    ) {
-        defaultModel = "qwen2.5-coder:3b";
     } else if (isOpenRouterConfigured) {
         defaultModel = "openrouter/free";
+    } else if (isOllamaOnline) {
+        defaultModel = "poiex3.0-uncensored";
     }
 
     return NextResponse.json({
