@@ -34,7 +34,8 @@ id_ecdsa*
 id_ed25519*
 *.token
 auth-token*
-.npmrc
+#.npmrc (un-ignored for Vercel deployment dependency resolution)
+!.npmrc
 .yarnrc
 
 # Cloud credentials and service account files
