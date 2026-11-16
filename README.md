@@ -10,12 +10,19 @@
   <img src="https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white" alt="Next.js" />
   <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/WebContainers-6366f1?style=flat-square&logo=webassembly&logoColor=white" alt="WebContainers" />
+  <img src="https://img.shields.io/badge/Deployed_on-Vercel-000000?style=flat-square&logo=vercel&logoColor=white" alt="Vercel" />
   <img src="https://img.shields.io/badge/MIT_License-22c55e?style=flat-square" alt="MIT" />
 </p>
 
-[What is PoiEx?](#what-is-poiex) · [How it works](#how-it-works) · [Highlights](#highlights) · [Starters](#starters) · [Getting started](#getting-started) · [AI options](#ai-options)
+[What is PoiEx?](#what-is-poiex) · [Demo](#demo) · [How it works](#how-it-works) · [Highlights](#highlights) · [Starters](#starters) · [Getting started](#getting-started) · [AI options](#ai-options)
 
 </div>
+
+---
+
+## Demo
+
+https://github.com/user-attachments/assets/7bce40a6-74f9-48f8-8828-9cfcd83155b0
 
 ---
 
@@ -23,7 +30,7 @@
 
 Think of having VS Code, a terminal, and a live web preview tucked inside a single browser tab. You open a page, and you have a working development workspace ready to go.
 
-Most online IDEs spin up a virtual machine on a remote server, charge you for compute hours, and host your files on their cloud. PoiEx works differently: everything runs on your own device inside the browser using WebAssembly. Your packages install in browser memory, your local server starts in the tab, and your preview updates in real time.
+Most online IDEs spin up a virtual machine on a remote server, charge you for compute hours, and host your files on their cloud. PoiEx works differently: deployed on Vercel for fast global delivery, everything runs on your own device inside the browser using WebAssembly. Your packages install in browser memory, your local server starts in the tab, and your preview updates in real time.
 
 AI assistance is built to respect your control and privacy. You can connect a local Ollama model for fast, private code autocompletions that never send keystrokes to the internet. Or you can connect Gemini or Groq for code reviews and debugging. When AI suggests code, you inspect it in a visual side-by-side diff before anything is saved. And if you prefer coding without AI, turn it off with one click.
 
