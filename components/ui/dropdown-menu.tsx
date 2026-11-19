@@ -22,13 +22,14 @@ function DropdownMenuContent({
   align = "start",
   alignOffset = 0,
   side = "bottom",
-  sideOffset = 4,
+  sideOffset = 6,
+  collisionPadding = 8,
   className,
   ...props
 }: MenuPrimitive.Popup.Props &
   Pick<
     MenuPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
+    "align" | "alignOffset" | "side" | "sideOffset" | "collisionPadding"
   >) {
   return (
     <MenuPrimitive.Portal>
@@ -38,6 +39,7 @@ function DropdownMenuContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
       >
         <MenuPrimitive.Popup
           data-slot="dropdown-menu-content"
@@ -126,16 +128,16 @@ function DropdownMenuSubTrigger({
 
 function DropdownMenuSubContent({
   align = "start",
-  alignOffset = -3,
+  alignOffset = -4,
   side = "right",
-  sideOffset = 0,
+  sideOffset = 6,
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuContent>) {
   return (
     <DropdownMenuContent
       data-slot="dropdown-menu-sub-content"
-      className={cn("w-auto min-w-[96px] rounded-lg bg-popover p-1 text-popover-foreground shadow-lg ring-1 ring-foreground/10 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+      className={cn("w-auto min-w-[96px] rounded-xl bg-popover/95 backdrop-blur-md p-1.5 text-popover-foreground shadow-xl ring-1 ring-border/60 duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
       align={align}
       alignOffset={alignOffset}
       side={side}

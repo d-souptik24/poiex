@@ -1184,7 +1184,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                       variant="outline"
                       size="sm"
                       disabled={isModelLoading}
-                      className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-900/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 border-zinc-300 dark:border-zinc-800 rounded-lg text-xs font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5 shadow-2xs group cursor-pointer"
+                      className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-900/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 border-zinc-300 dark:border-zinc-800 rounded-lg text-xs font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5 shadow-2xs group cursor-pointer data-popup-open:bg-zinc-200 dark:data-popup-open:bg-zinc-800"
                     >
                       <span
                         className={cn(
@@ -1204,7 +1204,9 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
               </ActionTooltip>
               <DropdownMenuContent
                 align="end"
-                className="w-64 p-1 bg-white dark:bg-[#111115] border border-zinc-200 dark:border-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                sideOffset={14}
+                collisionPadding={12}
+                className="w-64 p-1.5 bg-white/95 dark:bg-[#111115]/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-2xl shadow-zinc-950/15 dark:shadow-black/60 rounded-xl font-sans"
               >
                 <div className="px-2.5 py-1 text-[10px] uppercase font-mono tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold flex items-center justify-between">
                   <span>Models</span>
@@ -1334,7 +1336,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
+                      className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 data-popup-open:bg-zinc-100 dark:data-popup-open:bg-zinc-800 data-popup-open:text-zinc-950 dark:data-popup-open:text-zinc-100 cursor-pointer"
                     >
                       <Settings className="h-4 w-4" />
                     </Button>
@@ -1343,7 +1345,9 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
               </ActionTooltip>
               <DropdownMenuContent
                 align="end"
-                className="w-64 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                sideOffset={14}
+                collisionPadding={12}
+                className="w-64 p-1.5 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800/90 text-zinc-900 dark:text-zinc-100 shadow-2xl shadow-zinc-950/15 dark:shadow-black/60 rounded-xl font-sans"
               >
                 <DropdownMenuGroup>
                   <DropdownMenuCheckboxItem
