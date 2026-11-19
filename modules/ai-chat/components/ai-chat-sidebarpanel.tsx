@@ -5,12 +5,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
+import { CopyButton } from "@/components/ui/copy-button";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
+import { DeviceNotice } from "@/components/ui/device-notice";
 
 import {
   Loader2,
   ArrowUp,
   User,
-  Copy,
   Check,
   FileCode,
   X,
@@ -21,8 +23,7 @@ import {
   Settings,
   Zap,
   Download,
-  PanelLeftClose,
-  PanelLeftOpen,
+  PanelLeft,
   SquarePen,
   MoreHorizontal,
   Pencil,
@@ -104,14 +105,6 @@ const CodeBlockItem = ({
   onReviewDiff?: (code: string) => void;
   activeFileName?: string;
 }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-100/60 dark:bg-[#0e0e12] my-4 overflow-hidden shadow-xs font-sans">
       <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-100 dark:bg-[#16161c] border-b border-zinc-200 dark:border-zinc-800/80 text-xs text-zinc-600 dark:text-zinc-400">
@@ -119,56 +112,40 @@ const CodeBlockItem = ({
           {language || "code"}
         </span>
         <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={handleCopy}
-            className="h-6 px-2 text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
-          >
-            {copied ? (
-              <>
-                <Check className="h-3 w-3 mr-1 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                  Copied
-                </span>
-              </>
-            ) : (
-              <>
-                <Copy className="h-3 w-3 mr-1" />
-                <span>Copy</span>
-              </>
-            )}
-          </Button>
+          <CopyButton value={code} label="Copy code" />
           {onReviewDiff && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => onReviewDiff(code)}
-              className="h-6 px-2.5 text-[11px] border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 flex items-center gap-1 shadow-xs"
-              title="Review side-by-side diff against editor"
-            >
-              <ArrowLeftRight className="h-3 w-3 text-cyan-500" />
-              <span>Review Diff</span>
-            </Button>
+            <ActionTooltip label="Review side-by-side diff against editor">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onReviewDiff(code)}
+                className="h-6 px-2.5 text-[11px] border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 flex items-center gap-1 shadow-xs"
+              >
+                <ArrowLeftRight className="h-3 w-3 text-cyan-500" />
+                <span>Review Diff</span>
+              </Button>
+            </ActionTooltip>
           )}
           {onApplyCode && (
-            <Button
-              type="button"
-              size="sm"
-              variant="default"
-              onClick={() => onApplyCode(code)}
-              className="h-6 px-2.5 text-[11px] font-semibold bg-[#e93f3f] hover:bg-[#d43535] text-white flex items-center gap-1 shadow-xs rounded-md"
-              title={
+            <ActionTooltip
+              label={
                 activeFileName
                   ? `Apply to ${activeFileName}`
                   : "Apply to editor"
               }
             >
-              <FileCode className="h-3 w-3" />
-              <span>Apply</span>
-            </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="default"
+                onClick={() => onApplyCode(code)}
+                className="h-6 px-2.5 text-[11px] font-semibold bg-[#e93f3f] hover:bg-[#d43535] text-white flex items-center gap-1 shadow-xs rounded-md"
+              >
+                <FileCode className="h-3 w-3" />
+                <span>Apply</span>
+              </Button>
+            </ActionTooltip>
           )}
         </div>
       </div>
@@ -275,12 +252,28 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
     }
   });
 
-  const setIsSidebarOpen = useCallback((val: boolean) => {
-    setIsSidebarOpenState(val);
-    try {
-      localStorage.setItem("poiex-chat-sidebar-open", String(val));
-    } catch {}
-  }, []);
+  const setIsSidebarOpen = useCallback(
+    (val: boolean | ((prev: boolean) => boolean)) => {
+      setIsSidebarOpenState((prev) => {
+        const next = typeof val === "function" ? val(prev) : val;
+        try {
+          localStorage.setItem("poiex-chat-sidebar-open", String(next));
+        } catch {}
+        return next;
+      });
+    },
+    []
+  );
+
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+
+  const toggleSidebar = useCallback(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsMobileDrawerOpen((prev) => !prev);
+    } else {
+      setIsSidebarOpen((prev) => !prev);
+    }
+  }, [setIsSidebarOpen]);
   const [isSessionsLoading, setIsSessionsLoading] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -437,6 +430,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
     async (session: ChatSessionItem) => {
       setActiveSessionId(session.id);
       setActiveSessionTitle(session.title);
+      setIsMobileDrawerOpen(false);
       try {
         localStorage.setItem(sessionStorageKey, session.id);
       } catch {}
@@ -469,6 +463,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
     setActiveSessionTitle("New Chat");
     setMessages([]);
     setInput("");
+    setIsMobileDrawerOpen(false);
     try {
       localStorage.removeItem(sessionStorageKey);
     } catch {}
@@ -516,16 +511,24 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
     };
   }, [isOpen, fetchModels, fetchSessions]);
 
-  // Handle Escape key to close window
+  // Handle keyboard shortcuts (Escape to close, Ctrl+B / Cmd+B to toggle sidebar)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isOpen && !editingSessionId) {
         onClose();
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "b" &&
+        isOpen &&
+        !editingSessionId
+      ) {
+        e.preventDefault();
+        toggleSidebar();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, editingSessionId]);
+  }, [isOpen, onClose, editingSessionId, toggleSidebar]);
 
   // Auto focus inline rename input
   useEffect(() => {
@@ -895,12 +898,26 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
   }
 
   const panelContent = (
-    <div className="h-full w-full bg-[#FAFBFC] dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex overflow-hidden font-sans transition-colors">
-      {/* 1. Left Collapsible History Sidebar */}
+    <div className="h-full w-full bg-[#FAFBFC] dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 flex overflow-hidden font-sans transition-colors relative">
+      {/* Mobile Backdrop Overlay for Off-Canvas Drawer */}
+      {isMobileDrawerOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 dark:bg-black/75 backdrop-blur-xs z-30 md:hidden animate-in fade-in duration-200"
+          onClick={() => setIsMobileDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* 1. Left History Sidebar (Off-canvas slide-over drawer on mobile, static collapsible panel on desktop) */}
       <div
         className={cn(
-          "shrink-0 h-full border-r border-zinc-300 dark:border-zinc-800 bg-zinc-50/95 dark:bg-zinc-900/95 flex flex-col transition-all duration-300 ease-in-out select-none",
-          isSidebarOpen ? "w-64 sm:w-72" : "w-0 border-r-0 overflow-hidden",
+          "h-full border-r border-zinc-300 dark:border-zinc-800 bg-zinc-50/95 dark:bg-zinc-900/95 flex flex-col transition-all duration-300 ease-in-out select-none",
+          // Desktop static flex child:
+          "md:static md:shrink-0",
+          isSidebarOpen ? "md:w-64 md:sm:w-72" : "md:w-0 md:border-r-0 md:overflow-hidden",
+          // Mobile off-canvas drawer:
+          "fixed inset-y-0 left-0 z-40 w-[82vw] max-w-[280px] shadow-2xl shadow-black/80 md:shadow-none",
+          isMobileDrawerOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         {/* Brand Header: Clean Unified PoiEx Identity */}
@@ -918,15 +935,22 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
               PoiEx DevSpace
             </span>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsSidebarOpen(false)}
-            className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shrink-0"
-            title="Collapse sidebar"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
+
+          {/* Unified IDE-Style Sidebar Toggle (Matches editor page design, no arrow) */}
+          <div className="flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 p-0.5 bg-zinc-100/70 dark:bg-zinc-900/60 shadow-2xs shrink-0">
+            <ActionTooltip label="Collapse sidebar (Ctrl+B)">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={toggleSidebar}
+                className="h-7 w-7 p-0 rounded-md bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeft className="h-3.5 w-3.5" />
+              </Button>
+            </ActionTooltip>
+          </div>
         </div>
 
         {/* Primary Action: New Chat Button */}
@@ -1009,23 +1033,24 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
 
                   {!isEditing && (
                     <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <button
-                            type="button"
-                            onClick={(e) => e.stopPropagation()}
-                            className={cn(
-                              "h-6 w-6 p-0 rounded flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300/60 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-700/60 transition-opacity shrink-0",
-                              isActive
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100",
-                            )}
-                            title="Chat options"
-                          >
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          </button>
-                        }
-                      />
+                      <ActionTooltip label="Chat options" side="top">
+                        <DropdownMenuTrigger
+                          render={
+                            <button
+                              type="button"
+                              onClick={(e) => e.stopPropagation()}
+                              className={cn(
+                                "h-6 w-6 p-0 rounded flex items-center justify-center text-zinc-500 hover:text-zinc-900 hover:bg-zinc-300/60 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-700/60 transition-opacity shrink-0",
+                                isActive
+                                  ? "opacity-100"
+                                  : "opacity-0 group-hover:opacity-100",
+                              )}
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          }
+                        />
+                      </ActionTooltip>
                       <DropdownMenuContent align="end" className="w-36">
                         <DropdownMenuItem
                           onClick={(e) => handleStartRename(session, e)}
@@ -1077,35 +1102,44 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
       </div>
 
       {/* 2. Main Conversation View */}
-      <div className="flex-1 h-full flex flex-col min-w-0 overflow-hidden relative bg-[#FAFBFC] dark:bg-zinc-950">
+      <div className="flex-1 h-full flex flex-col min-w-0 overflow-hidden relative bg-[#FAFBFC] dark:bg-zinc-950 w-full">
         {/* Unified Sleek Command Header (52px) */}
-        <div className="shrink-0 h-13 border-b border-zinc-300 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 flex items-center justify-between gap-3 select-none z-10">
+        <div className="shrink-0 h-13 border-b border-zinc-300 dark:border-zinc-800 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between gap-2 sm:gap-3 select-none z-10">
           {/* Left: Sidebar Toggle + Title + File Badge */}
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            {!isSidebarOpen && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsSidebarOpen(true)}
-                className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800 shrink-0"
-                title="Open history sidebar"
-              >
-                <PanelLeftOpen className="h-4 w-4" />
-              </Button>
-            )}
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div
+              className={cn(
+                "flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 p-0.5 bg-zinc-100/70 dark:bg-zinc-900/60 shadow-2xs shrink-0 animate-in fade-in zoom-in-95 duration-150",
+                isSidebarOpen && "md:hidden"
+              )}
+            >
+              <ActionTooltip label={isSidebarOpen ? "Collapse sidebar (Ctrl+B)" : "Expand sidebar (Ctrl+B)"}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleSidebar}
+                  className="h-7 w-7 p-0 rounded-md text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40 transition-colors cursor-pointer"
+                  aria-label="Toggle sidebar"
+                >
+                  <PanelLeft className="h-3.5 w-3.5" />
+                </Button>
+              </ActionTooltip>
+            </div>
 
-            <div className="min-w-0 flex items-center gap-2">
-              <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-45 sm:max-w-70">
+            <div className="min-w-0 flex items-center gap-1.5 sm:gap-2">
+              <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-24 xs:max-w-36 sm:max-w-70">
                 {activeSessionTitle}
               </span>
               {activeFileName && (
-                <div
-                  className="text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 bg-zinc-100/90 dark:bg-zinc-800/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 px-2 py-0.5 rounded-md flex items-center gap-1.5 shrink-0 transition-colors shadow-2xs max-w-40 truncate"
-                  title={activeFileName}
-                >
-                  <FileCode className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
-                  <span className="truncate">{activeFileName}</span>
-                </div>
+                <ActionTooltip label={`Active file: ${activeFileName}`}>
+                  <div
+                    className="text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700 bg-zinc-100/90 dark:bg-zinc-800/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 px-1.5 sm:px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0 transition-colors shadow-2xs max-w-20 xs:max-w-32 sm:max-w-40 truncate cursor-default"
+                  >
+                    <FileCode className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
+                    <span className="truncate">{activeFileName}</span>
+                  </div>
+                </ActionTooltip>
               )}
             </div>
           </div>
@@ -1140,53 +1174,57 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             {/* Custom 2-Line Glassmorphic Model Dropdown Menu */}
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={isModelLoading}
-                    className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-900/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 border-zinc-300 dark:border-zinc-800 rounded-lg text-xs font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5 shadow-2xs group cursor-pointer"
-                    title={`Active Model: ${availableModels.find((m) => m.id === model)?.name || model}`}
-                  >
-                    <span
-                      className={cn(
-                        "w-2 h-2 rounded-full shrink-0",
-                        availableModels.find((m) => m.id === model)?.isAvailable !== false
-                          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"
-                          : "bg-amber-500"
-                      )}
-                    />
-                    <span className="truncate max-w-36 sm:max-w-44 text-[11.5px] font-medium">
-                      {availableModels.find((m) => m.id === model)?.name || model}
-                    </span>
-                    <ChevronDown className="h-3 w-3 text-zinc-400 group-hover:text-zinc-200 transition-transform shrink-0" />
-                  </Button>
-                }
-              />
+              <ActionTooltip
+                label={`Active Model: ${availableModels.find((m) => m.id === model)?.name || model}`}
+              >
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isModelLoading}
+                      className="h-7 px-2.5 bg-zinc-100 dark:bg-zinc-900/90 hover:bg-zinc-200/80 dark:hover:bg-zinc-800 border-zinc-300 dark:border-zinc-800 rounded-lg text-xs font-medium text-zinc-900 dark:text-zinc-200 flex items-center gap-1.5 shadow-2xs group cursor-pointer"
+                    >
+                      <span
+                        className={cn(
+                          "w-2 h-2 rounded-full shrink-0",
+                          availableModels.find((m) => m.id === model)?.isAvailable !== false
+                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"
+                            : "bg-amber-500"
+                        )}
+                      />
+                      <span className="truncate max-w-24 xs:max-w-36 sm:max-w-44 text-[11.5px] font-medium">
+                        {availableModels.find((m) => m.id === model)?.name || model}
+                      </span>
+                      <ChevronDown className="h-3 w-3 text-zinc-400 group-hover:text-zinc-200 transition-transform shrink-0" />
+                    </Button>
+                  }
+                />
+              </ActionTooltip>
               <DropdownMenuContent
                 align="end"
                 className="w-64 p-1 bg-white dark:bg-[#111115] border border-zinc-200 dark:border-zinc-800/80 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
               >
                 <div className="px-2.5 py-1 text-[10px] uppercase font-mono tracking-wider text-zinc-400 dark:text-zinc-500 font-semibold flex items-center justify-between">
                   <span>Models</span>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleSyncModels}
-                    disabled={isSyncing || isModelLoading}
-                    className="hover:text-zinc-700 dark:hover:text-zinc-200 flex items-center gap-1 transition-colors cursor-pointer select-none"
-                    title="Refresh model availability"
-                  >
-                    <RotateCw
-                      className={cn(
-                        "h-2.5 w-2.5",
-                        (isSyncing || isModelLoading) && "animate-spin"
-                      )}
-                    />
-                    <span>Sync</span>
-                  </button>
+                  <ActionTooltip label="Refresh model availability" side="left">
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={handleSyncModels}
+                      disabled={isSyncing || isModelLoading}
+                      className="hover:text-zinc-700 dark:hover:text-zinc-200 flex items-center gap-1 transition-colors cursor-pointer select-none"
+                    >
+                      <RotateCw
+                        className={cn(
+                          "h-2.5 w-2.5",
+                          (isSyncing || isModelLoading) && "animate-spin"
+                        )}
+                      />
+                      <span>Sync</span>
+                    </button>
+                  </ActionTooltip>
                 </div>
 
                 <DropdownMenuSeparator className="my-1 bg-zinc-200 dark:bg-zinc-800/60" />
@@ -1287,20 +1325,22 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
               </DropdownMenuContent>
             </DropdownMenu>
 
+
             {/* Settings Dropdown */}
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
-                    title="Chat settings"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                }
-              />
+              <ActionTooltip label="Chat settings">
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              </ActionTooltip>
               <DropdownMenuContent
                 align="end"
                 className="w-64 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
@@ -1347,20 +1387,22 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
             </DropdownMenu>
 
             {/* Close Window */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
-              title="Close chat window (Esc)"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <ActionTooltip label="Close chat window (Esc)">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="h-8 w-8 p-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:text-zinc-100 dark:hover:bg-zinc-800"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </ActionTooltip>
           </div>
         </div>
 
-        {/* Full-Height Messages Canvas (Gemini style) */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Full-Height Messages Canvas (Gemini style) with Overlay Notice */}
+        <div className="flex-1 min-h-0 overflow-y-auto relative">
+          <DeviceNotice scope="chat" />
           <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 space-y-6">
             {/* Clean Developer Hero (NO cheesy brain icon) */}
             {messages.length === 0 && !isLoading && (
@@ -1414,7 +1456,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                         className="flex items-center gap-3 p-3 bg-white dark:bg-zinc-900/80 hover:bg-zinc-100/80 dark:hover:bg-zinc-800 border border-zinc-300 dark:border-zinc-800/80 hover:border-zinc-400 dark:hover:border-zinc-700/80 rounded-xl text-xs text-zinc-800 dark:text-zinc-300 transition-colors text-left shadow-xs group"
                       >
                         <ItemIcon className="h-4 w-4 text-zinc-500 dark:text-zinc-400 group-hover:text-[#e93f3f] transition-colors shrink-0" />
-                        <span className="truncate">{item.title}</span>
+                        <span className="line-clamp-2 text-left">{item.title}</span>
                       </button>
                     );
                   })}
@@ -1451,16 +1493,13 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                               minute: "2-digit",
                             })}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              navigator.clipboard.writeText(msg.content)
-                            }
-                            className="hover:text-zinc-800 dark:hover:text-zinc-300 transition-colors p-0.5"
-                            title="Copy prompt"
-                          >
-                            <Copy className="h-2.5 w-2.5" />
-                          </button>
+                          <CopyButton
+                            value={msg.content}
+                            label="Copy prompt"
+                            copiedLabel="Copied!"
+                            className="h-5 w-5 p-0.5 text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-200/50 dark:hover:bg-zinc-700/50 rounded"
+                            iconClassName="size-2.5"
+                          />
                         </div>
                       </div>
 
@@ -1542,15 +1581,23 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                                       /\n$/,
                                       "",
                                     );
-                                    return match ? (
-                                      <CodeBlockItem
-                                        language={match[1]}
-                                        code={codeText}
-                                        onApplyCode={onApplyCode}
-                                        onReviewDiff={onReviewDiff}
-                                        activeFileName={activeFileName}
-                                      />
-                                    ) : (
+                                    const isBlock =
+                                      Boolean(match) || codeText.includes("\n");
+
+                                    if (isBlock) {
+                                      return (
+                                        <CodeBlockItem
+                                          language={
+                                            match ? match[1] : "code"
+                                          }
+                                          code={codeText}
+                                          onApplyCode={onApplyCode}
+                                          onReviewDiff={onReviewDiff}
+                                          activeFileName={activeFileName}
+                                        />
+                                      );
+                                    }
+                                    return (
                                       <code
                                         className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700/60 px-1.5 py-0.5 rounded text-xs font-mono text-zinc-800 dark:text-zinc-200"
                                         {...props}
@@ -1580,17 +1627,13 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                                 )}
                               </div>
                               <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(msg.content)
-                                  }
-                                  className="h-6 w-6 p-0 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-                                  title="Copy message"
-                                >
-                                  <Copy className="h-3 w-3" />
-                                </Button>
+                                <CopyButton
+                                  value={msg.content}
+                                  label="Copy message"
+                                  copiedLabel="Copied!"
+                                  className="h-6 w-6 p-1 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded-md"
+                                  iconClassName="size-3"
+                                />
                               </div>
                             </div>
                           </div>
@@ -1634,17 +1677,17 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
         </div>
 
         {/* 3. Floating Prompt Dock (Oval pill shape, sleek & responsive) */}
-        <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none px-4 sm:px-6 pb-3 pt-6 bg-gradient-to-t from-[#FAFBFC] via-[#FAFBFC]/90 to-transparent dark:from-zinc-950 dark:via-zinc-950/90 dark:to-transparent">
+        <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none px-3 sm:px-6 pb-3 pt-6 bg-gradient-to-t from-[#FAFBFC] via-[#FAFBFC]/90 to-transparent dark:from-zinc-950 dark:via-zinc-950/90 dark:to-transparent">
           <div className="w-full max-w-4xl mx-auto pointer-events-auto">
             <form
               onSubmit={handleSendMessage}
-              className="relative rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#121216] shadow-lg pl-5 pr-2.5 py-1.5 sm:pl-6 sm:pr-3 sm:py-2 flex items-center gap-2 transition-all focus-within:border-zinc-400 dark:focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-400/20"
+              className="relative rounded-full border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-[#121216] shadow-lg pl-4 sm:pl-6 pr-2 sm:pr-3 py-1.5 sm:py-2 flex items-center gap-2 transition-all focus-within:border-zinc-400 dark:focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-400/20"
             >
               <textarea
                 ref={promptTextareaRef}
                 placeholder={
                   chatMode === "chat"
-                    ? "Ask PoiEx assistant or describe what to implement..."
+                    ? "Ask PoiEx assistant..."
                     : chatMode === "review"
                       ? "Describe what to review..."
                       : chatMode === "fix"
@@ -1664,24 +1707,25 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
                 className="w-full bg-transparent border-0 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-500 text-sm leading-relaxed px-1 py-1.5 resize-none outline-none focus:outline-none focus:ring-0 min-h-[38px] max-h-28 scrollbar-thin"
               />
 
-              <Button
-                type="submit"
-                disabled={isLoading || !input.trim()}
-                size="icon"
-                className={cn(
-                  "h-8 w-8 rounded-full transition-all duration-150 shrink-0",
-                  input.trim() && !isLoading
-                    ? "bg-[#e93f3f] hover:bg-[#d43535] text-white shadow-xs hover:scale-105 active:scale-95"
-                    : "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-400 dark:text-zinc-500 border border-zinc-200 dark:border-zinc-700/60 cursor-not-allowed",
-                )}
-                title="Send message (Enter)"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-300" />
-                ) : (
-                  <ArrowUp className="h-4 w-4 stroke-[2.5]" />
-                )}
-              </Button>
+              <ActionTooltip label="Send message (Enter)">
+                <Button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  size="icon"
+                  className={cn(
+                    "h-8 w-8 rounded-full transition-all duration-150 shrink-0",
+                    input.trim() && !isLoading
+                      ? "bg-[#e93f3f] hover:bg-[#d43535] text-white shadow-xs hover:scale-105 active:scale-95"
+                      : "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-400 dark:text-zinc-500 border border-zinc-200 dark:border-zinc-700/60 cursor-not-allowed",
+                  )}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-300" />
+                  ) : (
+                    <ArrowUp className="h-4 w-4 stroke-[2.5]" />
+                  )}
+                </Button>
+              </ActionTooltip>
             </form>
             <p className="text-center mt-1.5 text-[10.5px] text-zinc-400 dark:text-zinc-500 font-sans select-none">
               PoiEx AI can make mistakes. Verify generated info.
@@ -1713,7 +1757,7 @@ export const AIChatSidePanel: React.FC<AIChatSidePanelProps> = ({
             "fixed z-50 flex flex-col transition-all duration-300 ease-out font-sans",
             isFullScreen
               ? "inset-0 w-full h-full bg-[#FAFBFC] dark:bg-zinc-950"
-              : "inset-4 sm:inset-8 md:inset-12 max-w-5xl max-h-[85vh] m-auto w-full h-full bg-[#FAFBFC] dark:bg-zinc-950 rounded-2xl border border-zinc-300 dark:border-zinc-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] overflow-hidden",
+              : "max-md:inset-0 max-md:w-full max-md:h-full max-md:rounded-none max-md:border-0 max-md:max-h-none inset-4 sm:inset-8 md:inset-12 max-w-5xl max-h-[85vh] m-auto w-full h-full bg-[#FAFBFC] dark:bg-zinc-950 rounded-2xl border border-zinc-300 dark:border-zinc-800 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.25)] dark:shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] overflow-hidden",
             isOpen
               ? "scale-100 opacity-100 pointer-events-auto"
               : "scale-95 opacity-0 pointer-events-none",
