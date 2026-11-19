@@ -85,6 +85,10 @@ export function parseGitHubUrl(input: string): ParsedGitHubUrl | null {
     return null;
 }
 
+import { detectRepoLanguage } from "@/modules/webcontainers/lib/native-packages";
+export { detectRepoLanguage };
+
+
 /**
  * Detects framework template based on package.json dependencies.
  */
@@ -96,11 +100,12 @@ function detectTemplateFromPackageJson(pkgJsonStr: string): Templates {
         if (deps.next) return Templates.NEXTJS;
         if (deps.hono) return Templates.HONO;
         if (deps.express) return Templates.EXPRESS;
-        if (deps.vue) return Templates.VUE;
+        if (deps.vue || deps.nuxt) return Templates.VUE;
         if (deps["@angular/core"]) return Templates.ANGULAR;
-        return Templates.REACT;
+        if (deps.react || deps["react-dom"]) return Templates.REACT;
+        return Templates.CUSTOM;
     } catch {
-        return Templates.REACT;
+        return Templates.CUSTOM;
     }
 }
 
@@ -345,23 +350,46 @@ export async function fetchGitHubRepoAsTemplate(
         });
     }
 
+    let isNonNodeProject = false;
+    let detectedNonNodeLanguage = "";
+
     if (!packageJsonContent) {
-        throw new Error(
-            "No package.json file was found at the root of the repository. WebContainers require a Node.js project with package.json to execute."
-        );
+        const { language } = detectRepoLanguage(entries.map((e) => e.relativePath));
+        isNonNodeProject = true;
+        detectedNonNodeLanguage = language;
+
+        const syntheticPkg = {
+            name: repo.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+            version: "1.0.0",
+            private: true,
+            description: `${language} project imported from https://github.com/${owner}/${repo}`,
+            poiexMode: "editor",
+            detectedLanguage: language,
+        };
+        packageJsonContent = JSON.stringify(syntheticPkg, null, 2);
+
+        insertFileIntoTree(root, ["package.json"], {
+            filename: "package",
+            fileExtension: "json",
+            content: packageJsonContent,
+        });
     }
 
-    const detectedTemplate = detectTemplateFromPackageJson(packageJsonContent);
+    const detectedTemplate = isNonNodeProject
+        ? Templates.CUSTOM
+        : detectTemplateFromPackageJson(packageJsonContent);
 
     let defaultTitle = repo;
-    let description = `Imported from https://github.com/${owner}/${repo}`;
+    let description = isNonNodeProject
+        ? `${detectedNonNodeLanguage} project imported from https://github.com/${owner}/${repo} (Editor & PoiEx DevSpace Mode)`
+        : `Imported from https://github.com/${owner}/${repo}`;
 
     try {
         const pkg = JSON.parse(packageJsonContent);
-        if (pkg.name && typeof pkg.name === "string") {
+        if (pkg.name && typeof pkg.name === "string" && !isNonNodeProject) {
             defaultTitle = pkg.name;
         }
-        if (pkg.description && typeof pkg.description === "string") {
+        if (pkg.description && typeof pkg.description === "string" && !isNonNodeProject) {
             description = pkg.description;
         }
     } catch {

@@ -99,7 +99,7 @@ export async function assertFreeTierProjectAllowance(userId: string, role?: stri
 
 export const createPlayground = async (data: {
     title: string;
-    template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
+    template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR" | "CUSTOM";
     description?: string;
 }) => {
     const user = await currentUser();

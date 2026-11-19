@@ -292,6 +292,31 @@ export default function ProjectTable({
     }
   };
 
+  const getEffectiveTemplate = (project: Project): string => {
+    if (!project) return "CUSTOM";
+    const rawTemplate = (project.template || "").toUpperCase();
+    if (rawTemplate === "CUSTOM") return "CUSTOM";
+
+    // Backwards compatibility for previously imported non-Node projects
+    if (
+      project.description &&
+      (project.description.includes("project imported from") ||
+        project.description.includes("Editor & PoiEx DevSpace Mode")) &&
+      (project.description.includes("Multi-Language") ||
+        project.description.includes("C/C++") ||
+        project.description.includes("Python") ||
+        project.description.includes("Rust") ||
+        project.description.includes("Go") ||
+        project.description.includes("Java") ||
+        project.description.includes("Ruby") ||
+        project.description.includes("PHP"))
+    ) {
+      return "CUSTOM";
+    }
+
+    return rawTemplate || "CUSTOM";
+  };
+
   const getTemplateBadgeStyle = (template: string) => {
     const lower = (template || "").toLowerCase();
     if (lower.includes("next")) {
@@ -306,7 +331,17 @@ export default function ProjectTable({
     if (lower.includes("react")) {
       return "bg-cyan-500/10 text-cyan-500 border-cyan-500/30 hover:bg-cyan-500/20";
     }
-    return "bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20";
+    if (lower.includes("vue")) {
+      return "bg-emerald-600/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-600/20";
+    }
+    if (lower.includes("angular")) {
+      return "bg-rose-500/10 text-rose-500 border-rose-500/30 hover:bg-rose-500/20";
+    }
+    if (lower.includes("custom")) {
+      return "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 hover:bg-indigo-500/20";
+    }
+    // Fallback: WCAG contrast compliant neutral/slate badge
+    return "bg-zinc-500/10 text-zinc-600 dark:text-zinc-300 border-zinc-300 dark:border-zinc-700/70 hover:bg-zinc-500/20";
   };
 
   const renderProjectActions = (project: Project) => (
@@ -450,12 +485,17 @@ export default function ProjectTable({
 
                 <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
                   <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] font-semibold tracking-wide py-0 px-1.5 uppercase ${getTemplateBadgeStyle(project.template)}`}
-                    >
-                      {project.template}
-                    </Badge>
+                    {(() => {
+                      const effectiveTemplate = getEffectiveTemplate(project);
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] font-semibold tracking-wide py-0 px-1.5 uppercase ${getTemplateBadgeStyle(effectiveTemplate)}`}
+                        >
+                          {effectiveTemplate}
+                        </Badge>
+                      );
+                    })()}
                     <span className="font-mono text-[11px]">
                       {project.createdAt
                         ? format(new Date(project.createdAt), "MMM dd, yyyy")
@@ -540,12 +580,17 @@ export default function ProjectTable({
                     </div>
                   </TableCell>
                   <TableCell className="py-3.5">
-                    <Badge
-                      variant="outline"
-                      className={`text-[11px] font-semibold tracking-wide py-0.5 px-2 uppercase ${getTemplateBadgeStyle(project.template)}`}
-                    >
-                      {project.template}
-                    </Badge>
+                    {(() => {
+                      const effectiveTemplate = getEffectiveTemplate(project);
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={`text-[11px] font-semibold tracking-wide py-0.5 px-2 uppercase ${getTemplateBadgeStyle(effectiveTemplate)}`}
+                        >
+                          {effectiveTemplate}
+                        </Badge>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="py-3.5">
                     <span className="text-xs text-muted-foreground font-mono">
