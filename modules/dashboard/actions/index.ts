@@ -5,6 +5,7 @@ import { currentUser } from "@/modules/auth/actions";
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { parseGitHubUrl, fetchGitHubRepoAsTemplate } from "../lib/github";
+import { MAX_FREE_PROJECTS } from "../constants";
 
 export const toggleStarMarked = async (
     playgroundId: string,
@@ -77,6 +78,25 @@ export const getAllPlaygroundForUser = async () => {
     }
 };
 
+/**
+ * Enforce Atlas M0 storage quota: limits free tier users to 15 concurrent playgrounds.
+ * ADMIN and PREMIUM_USER accounts are exempt.
+ */
+export async function assertFreeTierProjectAllowance(userId: string, role?: string): Promise<void> {
+    const isExempt = role === "ADMIN" || role === "PREMIUM_USER";
+    if (isExempt) return;
+
+    const count = await db.playground.count({
+        where: { userId },
+    });
+
+    if (count >= MAX_FREE_PROJECTS) {
+        throw new Error(
+            `Project limit reached (${MAX_FREE_PROJECTS}/${MAX_FREE_PROJECTS}). Free accounts on Atlas M0 can maintain up to ${MAX_FREE_PROJECTS} projects. Please archive or delete an existing project before creating a new one.`
+        );
+    }
+}
+
 export const createPlayground = async (data: {
     title: string;
     template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR";
@@ -89,6 +109,8 @@ export const createPlayground = async (data: {
     const { template, title, description } = data;
 
     try {
+        await assertFreeTierProjectAllowance(user.id, user.role);
+
         const playground = await db.playground.create({
             data: {
                 title: title,
@@ -101,7 +123,8 @@ export const createPlayground = async (data: {
         revalidatePath("/dashboard");
         return playground;
     } catch (error) {
-        console.log(error);
+        console.error("Error creating playground:", error);
+        throw error;
     }
 };
 
@@ -184,6 +207,8 @@ export const duplicateProjectById = async (id: string) => {
             throw new Error("Original playground not found");
         }
 
+        await assertFreeTierProjectAllowance(user.id, user.role);
+
         const newPlayground = await db.playground.create({
             data: {
                 title: `${originalPlayground.title} (Copy)`,
@@ -231,6 +256,8 @@ export const importGithubRepo = async (data: {
     if (!userId) {
         throw new Error("User record not found");
     }
+
+    await assertFreeTierProjectAllowance(userId, user.role);
 
     const { repoUrl, branch, title } = data;
 
