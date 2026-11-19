@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -8,7 +8,9 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Copy, Check, Trash2, Download, Sparkles, AlertCircle, X, TerminalSquare } from "lucide-react";
+import { CopyButton } from "@/components/ui/copy-button";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
+import { Search, Trash2, Download, Sparkles, AlertCircle, X, TerminalSquare, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { WebContainer, WebContainerProcess } from "@webcontainer/api";
@@ -68,6 +70,9 @@ interface TerminalProps {
   theme?: "dark" | "light";
   webContainerInstance?: WebContainer | null;
   onExplainError?: (errorLogs: string) => void;
+  onToggleCollapse?: () => void;
+  onToggleMaximize?: () => void;
+  isMaximized?: boolean;
 }
 
 // Define the methods that will be exposed through the ref
@@ -107,6 +112,9 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   theme = "dark",
   webContainerInstance,
   onExplainError,
+  onToggleCollapse,
+  onToggleMaximize,
+  isMaximized = false,
 }, ref) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const term = useRef<Terminal | null>(null);
@@ -116,7 +124,6 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   const [searchTerm, setSearchTerm] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [detectedError, setDetectedError] = useState<string | null>(null);
-  const [hasCopied, setHasCopied] = useState(false);
   
   // Command line state
   const currentDirectory = useRef<string>("");
@@ -573,34 +580,21 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
     }
   }, [writePrompt]);
 
-  const copyTerminalContent = useCallback(async () => {
-    if (!term.current) return;
-    try {
-      let content = term.current.getSelection();
-      if (!content || !content.trim()) {
-        const buffer = term.current.buffer.active;
-        const lines: string[] = [];
-        for (let i = 0; i < buffer.length; i++) {
-          const line = buffer.getLine(i);
-          if (line) {
-            lines.push(line.translateToString(true));
-          }
+  const getTerminalContent = useCallback(() => {
+    if (!term.current) return "";
+    let content = term.current.getSelection();
+    if (!content || !content.trim()) {
+      const buffer = term.current.buffer.active;
+      const lines: string[] = [];
+      for (let i = 0; i < buffer.length; i++) {
+        const line = buffer.getLine(i);
+        if (line) {
+          lines.push(line.translateToString(true));
         }
-        content = lines.join("\n").trim();
       }
-
-      if (content) {
-        await navigator.clipboard.writeText(content);
-        setHasCopied(true);
-        setTimeout(() => setHasCopied(false), 2000);
-        toast.success("Terminal logs copied to clipboard");
-      } else {
-        toast.info("Terminal is empty");
-      }
-    } catch (error) {
-      console.error("Failed to copy terminal content:", error);
-      toast.error("Failed to copy to clipboard");
+      content = lines.join("\n").trim();
     }
+    return content || "";
   }, []);
 
   const downloadTerminalLog = useCallback(() => {
@@ -737,7 +731,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
             <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
             <div className="w-3 h-3 rounded-full bg-green-500"></div>
           </div>
-          <span className="text-sm font-medium">WebContainer Terminal</span>
+          <span className="text-sm font-medium truncate max-w-[130px] xs:max-w-none">WebContainer Terminal</span>
           {isConnected && (
             <div className="flex items-center gap-1">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
@@ -748,20 +742,21 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
 
         <div className="flex items-center gap-1.5">
           {!detectedError && onExplainError && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExplainError}
-              className={cn(
-                "h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md border transition-all duration-150 shadow-xs shrink-0 group flex items-center",
-                "border-zinc-300 dark:border-zinc-700/80 bg-zinc-100/80 dark:bg-zinc-800/80 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-zinc-50 hover:border-cyan-500/40"
-              )}
-              title="Inspect recent terminal activity and diagnose errors with AI"
-            >
-              <TerminalSquare className="h-3 w-3 text-cyan-500 dark:text-cyan-400 transition-transform duration-150 group-hover:scale-110" />
-              <span className="hidden sm:inline font-mono text-[10.5px]">AI Diagnostics</span>
-              <span className="sm:hidden font-mono text-[10.5px]">AI</span>
-            </Button>
+            <ActionTooltip label="Inspect recent terminal activity and diagnose errors with AI">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExplainError}
+                className={cn(
+                  "h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md border transition-all duration-150 shadow-xs shrink-0 group flex items-center",
+                  "border-zinc-300 dark:border-zinc-700/80 bg-zinc-100/80 dark:bg-zinc-800/80 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-zinc-50 hover:border-cyan-500/40"
+                )}
+              >
+                <TerminalSquare className="h-3 w-3 text-cyan-500 dark:text-cyan-400 transition-transform duration-150 group-hover:scale-110" />
+                <span className="hidden sm:inline font-mono text-[10.5px]">AI Diagnostics</span>
+                <span className="sm:hidden font-mono text-[10.5px]">AI</span>
+              </Button>
+            </ActionTooltip>
           )}
 
           {showSearch && (
@@ -787,50 +782,79 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
             </div>
           )}
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSearch(!showSearch)}
-            className={cn(
-              "h-6 w-6 p-0 rounded transition-colors",
-              showSearch
-                ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
-                : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
-            )}
-            title="Search in terminal (Ctrl+F)"
-          >
-            <Search className="h-3 w-3" />
-          </Button>
+          <ActionTooltip label="Search in terminal (Ctrl+F)">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSearch(!showSearch)}
+              className={cn(
+                "h-6 w-6 p-0 rounded transition-colors",
+                showSearch
+                  ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
+              )}
+            >
+              <Search className="h-3 w-3" />
+            </Button>
+          </ActionTooltip>
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={copyTerminalContent}
+          <CopyButton
+            value={getTerminalContent}
+            label="Copy terminal output"
+            copiedLabel="Copied!"
             className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
-            title="Copy terminal output"
-          >
-            {hasCopied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
-          </Button>
+            iconClassName="h-3 w-3"
+          />
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={downloadTerminalLog}
-            className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
-            title="Download terminal log (.txt)"
-          >
-            <Download className="h-3 w-3" />
-          </Button>
+          <ActionTooltip label="Download terminal log (.txt)">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={downloadTerminalLog}
+              className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <Download className="h-3 w-3" />
+            </Button>
+          </ActionTooltip>
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearTerminal}
-            className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
-            title="Clear terminal buffer"
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <ActionTooltip label="Clear terminal buffer">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearTerminal}
+              className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </ActionTooltip>
+
+          {onToggleMaximize && (
+            <ActionTooltip label={isMaximized ? "Restore terminal split" : "Maximize terminal"}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleMaximize}
+                className="hidden md:inline-flex h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                aria-label={isMaximized ? "Restore terminal split" : "Maximize terminal"}
+              >
+                {isMaximized ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
+              </Button>
+            </ActionTooltip>
+          )}
+
+          {onToggleCollapse && (
+            <ActionTooltip label="Minimize terminal">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onToggleCollapse}
+                className="h-6 w-6 p-0 rounded text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                aria-label="Minimize terminal"
+              >
+                <Minus className="h-3 w-3" />
+              </Button>
+            </ActionTooltip>
+          )}
         </div>
       </div>
 
@@ -853,14 +877,15 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
                 <span>Explain & Fix with AI</span>
               </Button>
             )}
-            <button
-              type="button"
-              onClick={() => setDetectedError(null)}
-              className="p-1 hover:bg-rose-500/20 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
-              title="Dismiss error alert"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <ActionTooltip label="Dismiss error alert">
+              <button
+                type="button"
+                onClick={() => setDetectedError(null)}
+                className="p-1 hover:bg-rose-500/20 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </ActionTooltip>
           </div>
         </div>
       )}

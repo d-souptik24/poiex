@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
 import {
     Loader2,
     GitBranch,
@@ -305,16 +306,17 @@ export default function ImportRepoModal({
                                         Forks
                                     </button>
                                 </div>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={fetchUserRepos}
-                                    disabled={isFetchingRepos}
-                                    className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                                    title="Refresh repositories"
-                                >
-                                    <RotateCw className={`h-3.5 w-3.5 ${isFetchingRepos ? "animate-spin" : ""}`} />
-                                </Button>
+                                <ActionTooltip label="Refresh repositories">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={fetchUserRepos}
+                                        disabled={isFetchingRepos}
+                                        className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                                    >
+                                        <RotateCw className={`h-3.5 w-3.5 ${isFetchingRepos ? "animate-spin" : ""}`} />
+                                    </Button>
+                                </ActionTooltip>
                             </div>
                         )}
 

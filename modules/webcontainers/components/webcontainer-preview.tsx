@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
 import { transformToWebContainerFormat } from "../hooks/transformer";
 import { CheckCircle, Loader2, XCircle, Sparkles, RefreshCw } from "lucide-react";
@@ -9,6 +9,7 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 
 import { WebContainer, type WebContainerProcess } from "@webcontainer/api";
+import { usePanelRef } from "react-resizable-panels";
 import { TemplateFolder } from "@/modules/playground/lib/path-to-json";
 import TerminalComponent, { type TerminalRef } from "./terminal";
 import {
@@ -28,6 +29,10 @@ interface WebContainerPreviewProps {
   lastSavedAt?: number;
   onExplainError?: (errorLogs: string) => void;
   playgroundId?: string;
+  isSplitView?: boolean;
+  onToggleSplitView?: (split?: boolean) => void;
+  onToggleRightPanel?: () => void;
+  activeMobileTab?: "code" | "preview" | "terminal";
 }
 const WebContainerPreview = ({
   templateData,
@@ -39,6 +44,10 @@ const WebContainerPreview = ({
   lastSavedAt,
   onExplainError,
   playgroundId,
+  isSplitView = true,
+  onToggleSplitView,
+  onToggleRightPanel,
+  activeMobileTab,
 }: WebContainerPreviewProps) => {
   const [previewUrl, setPreviewUrl] = useState<string>(serverUrl || "");
   const activePreviewUrl = previewUrl || serverUrl || "";
@@ -53,6 +62,32 @@ const WebContainerPreview = ({
 
   const terminalRef = useRef<TerminalRef | null>(null);
   const activeDevProcessRef = useRef<WebContainerProcess | null>(null);
+  const previewWindowRef = usePanelRef();
+  const terminalWindowRef = usePanelRef();
+
+  const handleToggleMaximize = useCallback(() => {
+    onToggleSplitView?.(!isSplitView);
+  }, [isSplitView, onToggleSplitView]);
+
+  const handleToggleCollapse = useCallback(() => {
+    onToggleRightPanel?.();
+  }, [onToggleRightPanel]);
+
+  useEffect(() => {
+    const termPanel = terminalWindowRef.current;
+    const prevPanel = previewWindowRef.current;
+    if (!termPanel || !prevPanel) return;
+
+    if (isSplitView) {
+      if (prevPanel.isCollapsed()) {
+        prevPanel.resize("55%");
+      }
+      termPanel.resize("45%");
+    } else {
+      prevPanel.collapse();
+      termPanel.resize("100%");
+    }
+  }, [isSplitView, previewWindowRef, terminalWindowRef]);
 
   // Reset setup state when forceResetup changes
   useEffect(() => {
@@ -402,17 +437,31 @@ const WebContainerPreview = ({
       <ResizablePanelGroup
         orientation="vertical"
         className="h-full w-full"
+        data-mobile-preview-tab={activeMobileTab}
       >
         {/* Top Panel: Setup Progress or Live Preview iframe */}
         <ResizablePanel
           id="preview-window"
-          defaultSize={60}
-          minSize={15}
-          className="relative h-full w-full overflow-hidden"
+          panelRef={previewWindowRef}
+          defaultSize="55%"
+          minSize="15%"
+          collapsible={true}
+          collapsedSize="0%"
+          className={cn(
+            "relative h-full w-full overflow-hidden",
+            !isSplitView && "md:pointer-events-none"
+          )}
+          onResize={(size) => {
+            if (size.asPercentage <= 2 && isSplitView) {
+              onToggleSplitView?.(false);
+            } else if (size.asPercentage > 2 && !isSplitView) {
+              onToggleSplitView?.(true);
+            }
+          }}
         >
           {error || setupError ? (
             <div className="h-full w-full flex items-center justify-center p-6 bg-zinc-50 dark:bg-zinc-950 font-sans overflow-y-auto">
-              <div className="bg-white dark:bg-zinc-900 border border-rose-200 dark:border-rose-900/40 shadow-xl rounded-2xl p-6 max-w-lg w-full space-y-4">
+              <div className="my-auto bg-white dark:bg-zinc-900 border border-rose-200 dark:border-rose-900/40 shadow-xl rounded-2xl p-6 max-w-lg w-full space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 shrink-0">
                     <XCircle className="h-5 w-5" />
@@ -457,7 +506,7 @@ const WebContainerPreview = ({
                   description="Setting up the in-browser runtime environment for your project..."
                 />
               ) : isSetupComplete ? (
-                <div className="w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md text-center space-y-3">
+                <div className="my-auto w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md text-center space-y-3">
                   <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
                     <CheckCircle className="h-5 w-5" />
                   </div>
@@ -469,7 +518,7 @@ const WebContainerPreview = ({
                   </div>
                 </div>
               ) : (
-                <div className="w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md transition-colors">
+                <div className="my-auto w-full max-w-md p-6 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl dark:shadow-md transition-colors">
                   <Progress
                     value={(currentStep / totalSteps) * 100}
                     className="h-2 mb-6 [&_[data-slot=progress-indicator]]:bg-[#E93F3F]"
@@ -507,14 +556,22 @@ const WebContainerPreview = ({
         </ResizablePanel>
 
         {/* Resizable Handle between Preview & Terminal */}
-        <ResizableHandle withHandle />
+        <ResizableHandle
+          withHandle
+          className={cn(!isSplitView && "hidden", "max-md:hidden")}
+        />
 
         {/* Bottom Panel: WebContainer Terminal (Permanently mounted to maintain output & session) */}
         <ResizablePanel
           id="terminal-window"
-          defaultSize={40}
-          minSize={15}
-          className={cn("h-full w-full flex flex-col overflow-hidden transition-colors", isDark ? "bg-zinc-950" : "bg-[#F8F9FA]")}
+          panelRef={terminalWindowRef}
+          defaultSize="45%"
+          minSize="15%"
+          collapsible={false}
+          className={cn(
+            "h-full w-full flex flex-col overflow-hidden transition-colors",
+            isDark ? "bg-zinc-950" : "bg-[#F8F9FA]"
+          )}
         >
           <TerminalComponent
             ref={terminalRef}
@@ -522,6 +579,9 @@ const WebContainerPreview = ({
             theme={isDark ? "dark" : "light"}
             className="h-full w-full"
             onExplainError={onExplainError}
+            onToggleCollapse={handleToggleCollapse}
+            onToggleMaximize={handleToggleMaximize}
+            isMaximized={!isSplitView}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

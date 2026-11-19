@@ -21,7 +21,9 @@ import {
     SidebarGroup,
     SidebarRail,
     SidebarTrigger,
+    useSidebar,
 } from "@/components/ui/sidebar";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -77,10 +79,18 @@ export function TemplateFileTree({
     onRenameFile,
     onRenameFolder,
 }: TemplateFileTreeProps) {
+    const { isMobile, setOpenMobile } = useSidebar();
     const isRootFolder = Boolean(data && typeof data === "object" && "folderName" in data);
     const [isNewFileDialogOpen, setIsNewFileDialogOpen] = React.useState(false);
     const [isNewFolderDialogOpen, setIsNewFolderDialogOpen] =
         React.useState(false);
+
+    const handleFileSelect = (file: TemplateFile) => {
+        onFileSelect?.(file);
+        if (isMobile) {
+            setOpenMobile(false);
+        }
+    };
 
     const handleAddRootFile = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -125,18 +135,20 @@ export function TemplateFileTree({
                 </div>
                 <div className="flex items-center gap-1">
                     <DropdownMenu>
-                        <DropdownMenuTrigger
-                            render={
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    aria-label="Create file or folder"
-                                    className="h-8 w-8 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 rounded-md transition-colors"
-                                >
-                                    <Plus className="h-4 w-4" />
-                                </Button>
-                            }
-                        />
+                        <ActionTooltip label="New file or folder">
+                            <DropdownMenuTrigger
+                                render={
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Create file or folder"
+                                        className="h-8 w-8 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                }
+                            />
+                        </ActionTooltip>
                         <DropdownMenuContent
                             align="end"
                             className="w-40 p-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-xl rounded-lg font-sans"
@@ -158,7 +170,10 @@ export function TemplateFileTree({
                         </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <SidebarTrigger className="h-8 w-8 border-0 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200/70 dark:hover:bg-zinc-800 rounded-md" />
+                    {/* Mobile Collapse Sidebar Button */}
+                    <div className="flex md:hidden items-center">
+                        <SidebarTrigger />
+                    </div>
                 </div>
             </div>
 
@@ -175,7 +190,7 @@ export function TemplateFileTree({
                                     <TemplateNode
                                         key={key}
                                         item={child}
-                                        onFileSelect={onFileSelect}
+                                        onFileSelect={handleFileSelect}
                                         selectedFile={selectedFile}
                                         level={0}
                                         path=""
@@ -191,7 +206,7 @@ export function TemplateFileTree({
                         ) : (
                             <TemplateNode
                                 item={data}
-                                onFileSelect={onFileSelect}
+                                onFileSelect={handleFileSelect}
                                 selectedFile={selectedFile}
                                 level={0}
                                 path=""

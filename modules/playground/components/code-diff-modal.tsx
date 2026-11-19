@@ -9,6 +9,7 @@ import {
     DialogDescription,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
 import { getEditorLanguage } from "@/modules/playground/lib/editor-config";
 
 interface CodeDiffModalProps {
@@ -190,14 +191,15 @@ export const CodeDiffModal: React.FC<CodeDiffModalProps> = ({
                         <span className="text-red-600 dark:text-red-500 font-semibold">-{removedLines}</span>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="px-2 py-0.5 text-xs font-mono text-zinc-600 dark:text-neutral-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-200/60 dark:bg-neutral-800/80 hover:bg-zinc-200 dark:hover:bg-neutral-800 border border-zinc-300 dark:border-neutral-700/80 rounded transition-colors cursor-pointer"
-                        title="Close (Esc)"
-                    >
-                        Esc
-                    </button>
+                    <ActionTooltip label="Close (Esc)">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-2 py-0.5 text-xs font-mono text-zinc-600 dark:text-neutral-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-200/60 dark:bg-neutral-800/80 hover:bg-zinc-200 dark:hover:bg-neutral-800 border border-zinc-300 dark:border-neutral-700/80 rounded transition-colors cursor-pointer"
+                        >
+                            Esc
+                        </button>
+                    </ActionTooltip>
                 </div>
 
                 {/* 2. Subdued Column Labels (Current vs Incoming) with centered 1px split divider */}

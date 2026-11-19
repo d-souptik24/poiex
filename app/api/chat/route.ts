@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { currentUser } from "@/modules/auth/actions";
+import { rateLimit } from "@/lib/rate-limit";
 import { NextRequest, NextResponse } from "next/server";
 
 // Allow up to 60s execution duration on Vercel for streaming AI responses
@@ -201,6 +202,31 @@ interface ProviderAttempt {
     modelId: string;
 }
 
+/**
+ * Asynchronously prune old messages in a chat session to protect Atlas M0 storage cap.
+ * Keeps the latest 50 messages, removing older documents.
+ */
+export async function pruneOldSessionMessages(sessionId: string, maxMessages = 50) {
+    try {
+        const oldMessages = await db.chatMessage.findMany({
+            where: { sessionId },
+            select: { id: true },
+            orderBy: { createdAt: "desc" },
+            skip: maxMessages,
+        });
+
+        if (oldMessages.length > 0) {
+            await db.chatMessage.deleteMany({
+                where: {
+                    id: { in: oldMessages.map((m) => m.id) },
+                },
+            });
+        }
+    } catch (err) {
+        console.warn("[Atlas M0 Storage] Message prune skipped:", err);
+    }
+}
+
 export async function POST(req: NextRequest) {
     try {
         const user = await currentUser();
@@ -212,6 +238,18 @@ export async function POST(req: NextRequest) {
         }
 
         const userId: string = user.id;
+
+        // Rate limiting: 15 requests per minute on free tier
+        const rateCheck = rateLimit(userId, "chat");
+        if (!rateCheck.success) {
+            return NextResponse.json(
+                { error: "Rate limit reached. Please wait a moment before sending more requests." },
+                {
+                    status: 429,
+                    headers: rateCheck.headers,
+                }
+            );
+        }
 
         // Guard: reject payloads larger than 512 KB to prevent memory exhaustion
         // in the serverless function before we even try to parse JSON.
@@ -849,6 +887,8 @@ ${sanitizedActiveFileName ? `\n\n` + getSystemPrompt(mode, sanitizedActiveFileNa
                                         data: { updatedAt: new Date() },
                                     })
                                     .catch(() => {});
+
+                                pruneOldSessionMessages(activeSessionId).catch(() => {});
                             }
                         }
 
@@ -905,6 +945,8 @@ ${sanitizedActiveFileName ? `\n\n` + getSystemPrompt(mode, sanitizedActiveFileNa
                     where: { id: activeSessionId },
                     data: { updatedAt: new Date() },
                 });
+
+                pruneOldSessionMessages(activeSessionId).catch(() => {});
             }
         } catch {}
 

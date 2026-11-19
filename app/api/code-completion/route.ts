@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@/modules/auth/actions";
+import { rateLimit } from "@/lib/rate-limit";
 
 // Max duration for autocomplete fallback cascade on Vercel
 export const maxDuration = 30;
@@ -197,6 +198,15 @@ export async function POST(request: NextRequest) {
     const user = await currentUser();
     if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Rate limiting: 40 requests per minute on free tier
+    const rateCheck = rateLimit(user.id, "codeCompletion");
+    if (!rateCheck.success) {
+      return NextResponse.json(
+        { error: "Rate limit reached", completion: null },
+        { status: 429, headers: rateCheck.headers }
+      );
     }
 
     const body: MonacopilotRequestBody = await request.json();
