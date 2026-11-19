@@ -23,12 +23,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { PanelLeft } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
-const SIDEBAR_WIDTH_MOBILE = "18rem"
+const SIDEBAR_WIDTH_MOBILE = "15.5rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
@@ -202,7 +202,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          className="w-(--sidebar-width) bg-sidebar border-r border-zinc-200 dark:border-sidebar-border p-0 text-sidebar-foreground [&>button]:hidden shadow-2xl shadow-black/80"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -271,44 +271,47 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, open } = useSidebar()
+  const { toggleSidebar, open, isMobile, openMobile } = useSidebar()
+  const isOpen = isMobile ? openMobile : open
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            data-sidebar="trigger"
-            data-slot="sidebar-trigger"
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "h-7 w-7 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/80 active:bg-zinc-800 border border-zinc-800/60 hover:border-zinc-700/80 transition-all duration-150 shrink-0",
-              className
-            )}
-            onClick={(event) => {
-              onClick?.(event)
-              toggleSidebar()
-            }}
-            aria-label={open ? "Collapse Sidebar (Ctrl+B)" : "Expand Sidebar (Ctrl+B)"}
-            {...props}
-          >
-            {open ? (
-              <PanelLeftClose className="h-3.5 w-3.5 transition-transform duration-150" />
-            ) : (
-              <PanelLeftOpen className="h-3.5 w-3.5 transition-transform duration-150 text-zinc-300" />
-            )}
-            <span className="sr-only">Toggle Sidebar</span>
-          </Button>
-        }
-      />
-      <TooltipContent side="bottom" align="start" className="flex items-center gap-1.5 text-xs py-1 px-2 bg-zinc-900 border border-zinc-800 text-zinc-200 shadow-xl font-sans">
-        <span>{open ? "Collapse Sidebar" : "Expand Sidebar"}</span>
-        <kbd className="px-1 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700/80 rounded text-zinc-400 font-mono">
-          Ctrl+B
-        </kbd>
-      </TooltipContent>
-    </Tooltip>
+    <div className="flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 p-0.5 bg-zinc-100/70 dark:bg-zinc-900/60 shadow-2xs shrink-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              data-sidebar="trigger"
+              data-slot="sidebar-trigger"
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 w-7 p-0 rounded-md transition-colors cursor-pointer",
+                isOpen
+                  ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs hover:bg-zinc-50 dark:hover:bg-zinc-700"
+                  : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40",
+                className
+              )}
+              onClick={(event) => {
+                onClick?.(event)
+                toggleSidebar()
+              }}
+              aria-label={isOpen ? "Collapse Sidebar (Ctrl+B)" : "Expand Sidebar (Ctrl+B)"}
+              {...props}
+            >
+              <PanelLeft className="h-3.5 w-3.5" />
+              <span className="sr-only">Toggle Sidebar</span>
+            </Button>
+          }
+        />
+        <TooltipContent side="bottom" align="start" className="flex items-center gap-1.5 text-xs py-1 px-2 bg-zinc-900 border border-zinc-800 text-zinc-200 shadow-xl font-sans">
+          <span>{isOpen ? "Collapse Sidebar" : "Expand Sidebar"}</span>
+          <kbd className="px-1 py-0.5 text-[10px] bg-zinc-800 border border-zinc-700/80 rounded text-zinc-400 font-mono">
+            Ctrl+B
+          </kbd>
+        </TooltipContent>
+      </Tooltip>
+    </div>
   )
 }
 
@@ -322,7 +325,6 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       aria-label="Toggle Sidebar"
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Toggle Sidebar"
       className={cn(
         "absolute inset-y-0 z-20 hidden w-4 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:start-1/2 after:w-[2px] hover:after:bg-sidebar-border sm:flex ltr:-translate-x-1/2 rtl:-translate-x-1/2",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
