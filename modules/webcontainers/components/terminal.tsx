@@ -82,6 +82,7 @@ export interface TerminalRef {
   focusTerminal: () => void;
   registerBackgroundProcess?: (process: WebContainerProcess | null) => void;
   resetDirectory?: () => void;
+  renderPrompt?: () => void;
 }
 
 function resolvePath(current: string, target: string): string {
@@ -133,6 +134,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   const historyIndex = useRef<number>(-1);
   const currentProcess = useRef<WebContainerProcess | null>(null);
   const backgroundProcess = useRef<WebContainerProcess | null>(null);
+  const hasRenderedPrompt = useRef<boolean>(false);
   // Keep a ref to the WebContainer instance so that executeCommand and
   // handleTerminalInput don't need it in their useCallback dep arrays.
   // Without this, every parent re-render that changes webContainerInstance
@@ -148,6 +150,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       term.current.write(`\r\n\x1b[36m${displayPath}\x1b[0m $ `);
       currentLine.current = "";
       cursorPosition.current = 0;
+      hasRenderedPrompt.current = true;
     }
   }, []);
 
@@ -197,7 +200,41 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
     resetDirectory: () => {
       currentDirectory.current = "";
     },
+    renderPrompt: () => {
+      writePrompt();
+    },
   }));
+
+  const getRecentTerminalOutput = useCallback((maxLines: number = 35): string => {
+    if (!term.current) return "";
+
+    const selection = term.current.getSelection();
+    if (selection && selection.trim().length > 10) {
+      return selection.trim();
+    }
+
+    const buffer = term.current.buffer.active;
+    const lines: string[] = [];
+
+    for (let i = buffer.length - 1; i >= 0 && lines.length < maxLines; i--) {
+      const lineObj = buffer.getLine(i);
+      if (lineObj) {
+        const text = lineObj.translateToString(true).trim();
+        if (text) {
+          lines.unshift(text);
+        }
+      }
+    }
+
+    return lines.join("\n");
+  }, []);
+
+  const handleExplainError = useCallback(() => {
+    const output = getRecentTerminalOutput(35);
+    if (output && onExplainError) {
+      onExplainError(output);
+    }
+  }, [getRecentTerminalOutput, onExplainError]);
 
   const executeCommand = useCallback(async (command: string) => {
     if (!webContainerRef.current || !term.current) return;
@@ -227,6 +264,17 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
         return;
       }
 
+      if (command.trim() === "ai" || command.trim() === "diagnose") {
+        if (onExplainError) {
+          handleExplainError();
+          term.current.writeln("\r\n\x1b[36m✨ Triggered AI Diagnostics in sidebar.\x1b[0m");
+        } else {
+          term.current.writeln("\r\n\x1b[90mAI Diagnostics is currently unavailable.\x1b[0m");
+        }
+        writePrompt();
+        return;
+      }
+
       if (command.trim() === "") {
         writePrompt();
         return;
@@ -242,16 +290,25 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       // Reset error alert on new command execution
       setDetectedError(null);
 
-      // Built-in help command
+      // Built-in help command: concise, real-world CLI format
       if (cmd === "help") {
-        term.current.writeln("\r\nPoiEx WebContainer Shell:");
-        term.current.writeln("  cd <dir>     Change directory (e.g. cd init, cd ..)");
-        term.current.writeln("  pwd          Print current working directory");
-        term.current.writeln("  ls           List files and directories");
-        term.current.writeln("  node <file>  Run a Node.js script");
-        term.current.writeln("  npm <cmd>    Run npm commands (e.g. npm test, npm start)");
-        term.current.writeln("  clear        Clear the terminal display");
-        term.current.writeln("  history      View previously entered commands");
+        term.current.writeln("\r\nPoiEx Shell Commands:");
+        term.current.writeln("  cd <dir>         \x1b[90mChange directory (e.g. cd src, cd ..)\x1b[0m");
+        term.current.writeln("  pwd              \x1b[90mPrint working directory\x1b[0m");
+        term.current.writeln("  ls [path]        \x1b[90mList files and folders (supports -la)\x1b[0m");
+        term.current.writeln("  cat <file>       \x1b[90mDisplay file contents\x1b[0m");
+        term.current.writeln("  touch <file>     \x1b[90mCreate an empty file\x1b[0m");
+        term.current.writeln("  mkdir <dir>      \x1b[90mCreate a directory (supports -p)\x1b[0m");
+        term.current.writeln("  rm <target>      \x1b[90mRemove file or directory (supports -rf)\x1b[0m");
+        term.current.writeln("  cp <src> <dest>  \x1b[90mCopy file or directory\x1b[0m");
+        term.current.writeln("  mv <src> <dest>  \x1b[90mMove or rename file or directory\x1b[0m");
+        term.current.writeln("  node <file>      \x1b[90mRun a JavaScript file\x1b[0m");
+        term.current.writeln("  npm <cmd>        \x1b[90mRun npm commands (install, dev, test)\x1b[0m");
+        term.current.writeln("  npx <pkg>        \x1b[90mExecute an npm package binary\x1b[0m");
+        term.current.writeln("  clear, cls       \x1b[90mClear the terminal display\x1b[0m");
+        term.current.writeln("  history          \x1b[90mView previously entered commands\x1b[0m");
+        term.current.writeln("  ai, diagnose     \x1b[90mInspect recent terminal logs with AI\x1b[0m\r\n");
+        term.current.writeln("\x1b[90mShortcuts: Tab (autocomplete), Ctrl+C (cancel), ↑/↓ (history)\x1b[0m");
         writePrompt();
         return;
       }
@@ -286,6 +343,86 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       if (cmd === "pwd") {
         const fullPath = currentDirectory.current ? `/${currentDirectory.current}` : "/";
         term.current.writeln(`\r\n${fullPath}`);
+        writePrompt();
+        return;
+      }
+
+      // Built-in cat command
+      if (cmd === "cat") {
+        const file = args[0]?.trim();
+        if (!file) {
+          term.current.writeln("\r\nusage: cat <file>");
+          writePrompt();
+          return;
+        }
+        const resolved = resolvePath(currentDirectory.current, file);
+        try {
+          const content = await webContainerRef.current.fs.readFile(resolved, "utf8");
+          term.current.writeln(`\r\n${content.replace(/\r?\n/g, "\r\n")}`);
+        } catch {
+          term.current.writeln(`\r\ncat: ${file}: No such file or directory`);
+        }
+        writePrompt();
+        return;
+      }
+
+      // Built-in touch command
+      if (cmd === "touch") {
+        const file = args[0]?.trim();
+        if (!file) {
+          term.current.writeln("\r\nusage: touch <file>");
+          writePrompt();
+          return;
+        }
+        const resolved = resolvePath(currentDirectory.current, file);
+        try {
+          try {
+            await webContainerRef.current.fs.readFile(resolved);
+          } catch {
+            await webContainerRef.current.fs.writeFile(resolved, "");
+          }
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          term.current.writeln(`\r\ntouch: cannot touch '${file}': ${msg}`);
+        }
+        writePrompt();
+        return;
+      }
+
+      // Built-in mkdir command
+      if (cmd === "mkdir") {
+        const dir = args.filter((a) => !a.startsWith("-"))[0]?.trim();
+        if (!dir) {
+          term.current.writeln("\r\nusage: mkdir [-p] <directory>");
+          writePrompt();
+          return;
+        }
+        const resolved = resolvePath(currentDirectory.current, dir);
+        try {
+          await webContainerRef.current.fs.mkdir(resolved, { recursive: true });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          term.current.writeln(`\r\nmkdir: cannot create directory '${dir}': ${msg}`);
+        }
+        writePrompt();
+        return;
+      }
+
+      // Built-in rm command
+      if (cmd === "rm") {
+        const target = args.filter((a) => !a.startsWith("-"))[0]?.trim();
+        if (!target) {
+          term.current.writeln("\r\nusage: rm [-rf] <file_or_dir>");
+          writePrompt();
+          return;
+        }
+        const resolved = resolvePath(currentDirectory.current, target);
+        try {
+          await webContainerRef.current.fs.rm(resolved, { recursive: true, force: true });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          term.current.writeln(`\r\nrm: cannot remove '${target}': ${msg}`);
+        }
         writePrompt();
         return;
       }
@@ -338,7 +475,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       }
       currentProcess.current = null;
     }
-  }, [writePrompt, scanForError]);
+  }, [writePrompt, scanForError, handleExplainError, onExplainError]);
 
   const handleTerminalInput = useCallback(async (data: string) => {
     if (!term.current) return;
@@ -511,8 +648,8 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
     const terminal = new Terminal({
       cursorBlink: true,
       fontFamily: '"Fira Code", "JetBrains Mono", "Consolas", monospace',
-      fontSize: 14,
-      lineHeight: 1.2,
+      fontSize: 13,
+      lineHeight: 1.35,
       letterSpacing: 0,
       theme: terminalThemes[theme],
       allowTransparency: false,
@@ -544,28 +681,26 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       fitAddonInstance.fit();
     }, 100);
 
-    // Welcome message
-    terminal.writeln("🚀 WebContainer Terminal");
-    terminal.writeln("Type 'help' for available commands");
-    writePrompt();
+    // Welcome banner: clean, formatted, with room for incoming boot logs
+    terminal.writeln("\x1b[1m🚀  WebContainer Terminal\x1b[0m");
+    terminal.writeln("\x1b[90mType 'help' for available commands.\x1b[0m\r\n");
 
     return terminal;
-  }, [theme, handleTerminalInput, writePrompt]);
+  }, [theme, handleTerminalInput]);
 
   const connectToWebContainer = useCallback(async () => {
     if (!webContainerInstance || !term.current) return;
 
     try {
       setIsConnected(true);
-      term.current.writeln("✅ Connected to WebContainer");
-      term.current.writeln("Ready to execute commands");
-      writePrompt();
+      term.current.writeln("\x1b[32m✅\x1b[0m  Connected to WebContainer");
+      term.current.writeln("\x1b[90mReady to execute commands\x1b[0m\r\n");
     } catch (error) {
       setIsConnected(false);
-      term.current.writeln("❌ Failed to connect to WebContainer");
+      term.current.writeln("\x1b[31m❌\x1b[0m  Failed to connect to WebContainer");
       console.error("WebContainer connection error:", error);
     }
-  }, [webContainerInstance, writePrompt]);
+  }, [webContainerInstance]);
 
   const clearTerminal = useCallback(() => {
     if (term.current) {
@@ -574,7 +709,8 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
       setDetectedError(null);
       // Clean viewport and scrollback using ANSI escape sequences
       term.current.write("\x1b[2J\x1b[3J\x1b[H");
-      term.current.writeln("🚀 WebContainer Terminal");
+      term.current.writeln("\x1b[1m🚀  WebContainer Terminal\x1b[0m");
+      term.current.writeln("\x1b[90mType 'help' for available commands.\x1b[0m\r\n");
       writePrompt();
       toast.success("Terminal cleared");
     }
@@ -642,37 +778,6 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
     }
   }, []);
 
-  const getRecentTerminalOutput = useCallback((maxLines: number = 35): string => {
-    if (!term.current) return "";
-
-    const selection = term.current.getSelection();
-    if (selection && selection.trim().length > 10) {
-      return selection.trim();
-    }
-
-    const buffer = term.current.buffer.active;
-    const lines: string[] = [];
-
-    for (let i = buffer.length - 1; i >= 0 && lines.length < maxLines; i--) {
-      const lineObj = buffer.getLine(i);
-      if (lineObj) {
-        const text = lineObj.translateToString(true).trim();
-        if (text) {
-          lines.unshift(text);
-        }
-      }
-    }
-
-    return lines.join("\n");
-  }, []);
-
-  const handleExplainError = useCallback(() => {
-    const output = getRecentTerminalOutput(35);
-    if (output && onExplainError) {
-      onExplainError(output);
-    }
-  }, [getRecentTerminalOutput, onExplainError]);
-
   useEffect(() => {
     initializeTerminal();
 
@@ -724,23 +829,27 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
   return (
     <div className={cn("flex flex-col h-full bg-background border rounded-lg overflow-hidden", className)}>
       {/* Terminal Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-border bg-zinc-100/90 dark:bg-muted/50 text-zinc-800 dark:text-zinc-200 transition-colors">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-200 dark:border-border bg-zinc-100/90 dark:bg-muted/50 text-zinc-800 dark:text-zinc-200 transition-colors gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
           </div>
-          <span className="text-sm font-medium truncate max-w-[130px] xs:max-w-none">WebContainer Terminal</span>
+          <span className="text-xs sm:text-sm font-medium text-foreground truncate min-w-0">
+            WebContainer Terminal
+          </span>
           {isConnected && (
-            <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-xs text-muted-foreground">Connected</span>
-            </div>
+            <ActionTooltip label="Connected to WebContainer">
+              <div className="flex items-center gap-1 shrink-0">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-xs text-muted-foreground hidden md:inline">Connected</span>
+              </div>
+            </ActionTooltip>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 shrink-0">
           {!detectedError && onExplainError && (
             <ActionTooltip label="Inspect recent terminal activity and diagnose errors with AI">
               <Button
@@ -748,13 +857,12 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
                 size="sm"
                 onClick={handleExplainError}
                 className={cn(
-                  "h-6 px-2.5 text-[11px] font-medium gap-1.5 rounded-md border transition-all duration-150 shadow-xs shrink-0 group flex items-center",
+                  "h-6 px-2 text-[11px] font-medium gap-1.5 rounded-md border transition-all duration-150 shadow-xs shrink-0 group flex items-center",
                   "border-zinc-300 dark:border-zinc-700/80 bg-zinc-100/80 dark:bg-zinc-800/80 hover:bg-zinc-200/80 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-200 hover:text-zinc-950 dark:hover:text-zinc-50 hover:border-cyan-500/40"
                 )}
               >
                 <TerminalSquare className="h-3 w-3 text-cyan-500 dark:text-cyan-400 transition-transform duration-150 group-hover:scale-110" />
-                <span className="hidden sm:inline font-mono text-[10.5px]">AI Diagnostics</span>
-                <span className="sm:hidden font-mono text-[10.5px]">AI</span>
+                <span className="font-mono text-[10.5px]">AI Diagnostics</span>
               </Button>
             </ActionTooltip>
           )}
@@ -776,7 +884,7 @@ TerminalComponent = forwardRef<TerminalRef, TerminalProps>(({
                     setShowSearch(false);
                   }
                 }}
-                className="h-6 w-44 text-xs px-2 py-0 bg-background border-zinc-300 dark:border-zinc-700 focus-visible:ring-1"
+                className="h-6 w-36 text-xs px-2 py-0 bg-background border-zinc-300 dark:border-zinc-700 focus-visible:ring-1"
                 autoFocus
               />
             </div>
