@@ -76,6 +76,7 @@ export function findFirstFile(folder: TemplateFolder): TemplateFile | null {
     if (!folder || !folder.items) return null;
     for (const item of folder.items) {
         if (!("folderName" in item)) {
+            if (item.filename === "package-lock" && item.fileExtension === "json") continue;
             return item;
         }
     }

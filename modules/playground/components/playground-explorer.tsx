@@ -46,6 +46,14 @@ import type {
 
 type TemplateItem = TemplateFile | TemplateFolder;
 
+const isHiddenExplorerItem = (item: TemplateItem): boolean => {
+    return (
+        !("folderName" in item) &&
+        item.filename === "package-lock" &&
+        item.fileExtension === "json"
+    );
+};
+
 interface TemplateFileTreeProps {
     data: TemplateItem;
     onFileSelect?: (file: TemplateFile) => void;
@@ -181,7 +189,9 @@ export function TemplateFileTree({
                 <SidebarGroup className="p-0">
                     <div className="flex flex-col w-full py-1">
                         {isRootFolder ? (
-                            (data as TemplateFolder).items.map((child) => {
+                            (data as TemplateFolder).items
+                                .filter((child) => !isHiddenExplorerItem(child))
+                                .map((child) => {
                                 const key =
                                     "folderName" in child
                                         ? `folder-${child.folderName}`
@@ -548,7 +558,9 @@ function TemplateNode({
                             style={{ left: `${17 + level * 16}px` }}
                         />
                         <div className="flex flex-col w-full">
-                            {folder.items.map((childItem) => {
+                            {folder.items
+                                .filter((childItem) => !isHiddenExplorerItem(childItem))
+                                .map((childItem) => {
                                 const childKey =
                                     "folderName" in childItem
                                         ? `folder-${currentPath}/${childItem.folderName}`

@@ -5,6 +5,7 @@ import type { WebContainer } from "@webcontainer/api";
 import { TemplateFile, TemplateFolder } from "../lib/path-to-json";
 
 import { generateFileId } from "../lib";
+import { disposeMonacoModel, disposeAllMonacoModels } from "../lib/monaco-cleanup";
 
 interface OpenFile extends TemplateFile {
     id: string;
@@ -86,6 +87,7 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
     setPlaygroundId(id) {
         const currentId = get().playgroundId;
         if (currentId && currentId !== id) {
+            disposeAllMonacoModels();
             set({
                 playgroundId: id,
                 openFiles: [],
@@ -150,10 +152,13 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
             openFiles: newFiles,
             activeFileId: newActiveFileId,
             editorContent: newEditorContent
-        })
+        });
 
+        // Clean up the closed tab's Monaco model after state transition
+        disposeMonacoModel(fileId);
     },
     closeAllFiles: () => {
+        disposeAllMonacoModels();
         set({
             openFiles: [],
             activeFileId: null,
@@ -274,6 +279,8 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
             if (openFile) {
                 // Close the file using the closeFile method
                 get().closeFile(fileId);
+            } else {
+                disposeMonacoModel(fileId);
             }
 
             set({ templateData: updatedTemplateData });
@@ -402,6 +409,9 @@ export const useFileExplorer = create<FileExplorerState>((set, get) => ({
                     openFiles: updatedOpenFiles,
                     activeFileId: activeFileId === oldFileId ? newFileId : activeFileId,
                 });
+
+                // Dispose old model from Monaco registry to prevent orphaned leaks
+                disposeMonacoModel(oldFileId);
 
                 // Use the passed saveTemplateData function if provided
                 if (typeof saveTemplateData === "function") {
