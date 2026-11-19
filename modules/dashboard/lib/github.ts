@@ -277,6 +277,9 @@ export async function fetchGitHubRepoAsTemplate(
         // Drop the top-level GitHub folder
         const relativeSegments = segments.slice(1);
 
+        // Guard against directory traversal attacks (zip-slip)
+        if (relativeSegments.some((seg) => seg === ".." || seg === ".")) return;
+
         // Check if any directory segment is in the ignore list
         const isIgnoredFolder = relativeSegments
             .slice(0, -1)

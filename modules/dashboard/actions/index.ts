@@ -97,6 +97,33 @@ export async function assertFreeTierProjectAllowance(userId: string, role?: stri
     }
 }
 
+/**
+ * Post-insert concurrency verification to prevent TOCTOU race conditions.
+ * If concurrent creations pushed a free-tier user over MAX_FREE_PROJECTS,
+ * the newly created playground is rolled back immediately.
+ */
+export async function enforceQuotaPostCreation(playgroundId: string, userId: string, role?: string): Promise<void> {
+    const isExempt = role === "ADMIN" || role === "PREMIUM_USER";
+    if (isExempt) return;
+
+    const count = await db.playground.count({
+        where: { userId },
+    });
+
+    if (count > MAX_FREE_PROJECTS) {
+        await db.templateFile.deleteMany({
+            where: { playgroundId },
+        }).catch(() => {});
+        await db.playground.delete({
+            where: { id: playgroundId },
+        }).catch(() => {});
+
+        throw new Error(
+            `Project limit reached (${MAX_FREE_PROJECTS}/${MAX_FREE_PROJECTS}). Free accounts on Atlas M0 can maintain up to ${MAX_FREE_PROJECTS} projects. Please archive or delete an existing project before creating a new one.`
+        );
+    }
+}
+
 export const createPlayground = async (data: {
     title: string;
     template: "REACT" | "NEXTJS" | "EXPRESS" | "VUE" | "HONO" | "ANGULAR" | "CUSTOM";
@@ -119,6 +146,8 @@ export const createPlayground = async (data: {
                 userId: user.id,
             },
         });
+
+        await enforceQuotaPostCreation(playground.id, user.id, user.role);
 
         revalidatePath("/dashboard");
         return playground;
@@ -218,6 +247,8 @@ export const duplicateProjectById = async (id: string) => {
             },
         });
 
+        await enforceQuotaPostCreation(newPlayground.id, user.id, user.role);
+
         if (originalPlayground.templateFiles?.length > 0 && originalPlayground.templateFiles[0].content !== null) {
             await db.templateFile.create({
                 data: {
@@ -298,6 +329,8 @@ export const importGithubRepo = async (data: {
             userId,
         },
     });
+
+    await enforceQuotaPostCreation(playground.id, userId, user.role);
 
     await db.templateFile.create({
         data: {
