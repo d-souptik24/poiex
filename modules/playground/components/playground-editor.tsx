@@ -8,9 +8,10 @@ import type { IDisposable, editor } from "monaco-editor"
 import { registerCompletion, type CompletionRegistration } from "monacopilot"
 import { TemplateFile } from "../lib/path-to-json"
 import { configureMonaco, defaultEditorOptions, getEditorLanguage } from "../lib/editor-config"
+import { disposeAllMonacoModels } from "../lib/monaco-cleanup"
 
 interface PlaygroundEditorProps {
-    activeFile: TemplateFile | undefined
+    activeFile: (TemplateFile & { id?: string }) | undefined
     content: string
     onContentChange: (value: string) => void
     isAIEnabled?: boolean
@@ -233,6 +234,14 @@ export const PlaygroundEditor = ({
         registerMonacopilot()
     }, [updateEditorLanguage, registerMonacopilot])
 
+    const activeFilePath = useMemo(() => {
+        if (!activeFile) return undefined
+        if ("id" in activeFile && typeof activeFile.id === "string" && activeFile.id) {
+            return activeFile.id
+        }
+        return `${activeFile.filename}${activeFile.fileExtension ? `.${activeFile.fileExtension}` : ""}`
+    }, [activeFile])
+
     // Cleanup on unmount
     useEffect(() => {
         return () => {
@@ -245,6 +254,7 @@ export const PlaygroundEditor = ({
                 completionRegistrationRef.current.deregister()
                 completionRegistrationRef.current = null
             }
+            disposeAllMonacoModels()
         }
     }, [cancelPendingCompletion])
 
@@ -271,6 +281,7 @@ export const PlaygroundEditor = ({
         <div className="h-full relative">
             <Editor
                 height="100%"
+                path={activeFilePath}
                 value={content}
                 theme={editorTheme}
                 onChange={(value) => onContentChange(value || "")}

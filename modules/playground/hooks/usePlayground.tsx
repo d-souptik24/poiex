@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 
-import type { TemplateFolder } from "../lib/path-to-json";
+import type { TemplateFolder, TemplateFile } from "../lib/path-to-json";
 import { getPlaygroundById, SaveUpdatedCode } from "../actions";
 
 interface PlaygroundData {
@@ -54,7 +54,57 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
                 typeof parsedContent === "object" &&
                 ("items" in parsedContent || "folderName" in parsedContent)
             ) {
-                setTemplateData(parsedContent as TemplateFolder);
+                const folder = parsedContent as TemplateFolder;
+
+                // Auto-heal existing projects created before lockfile mounting
+                const hasLockfile = folder.items?.some(
+                    (item) => "filename" in item && item.filename === "package-lock" && item.fileExtension === "json"
+                );
+
+                if (!hasLockfile) {
+                    try {
+                        const res = await fetch(`/api/template/${id}`);
+                        if (res.ok) {
+                            const templateRes = await res.json();
+                            const templateItems: TemplateFolder["items"] =
+                                templateRes.templateJson?.items ||
+                                (Array.isArray(templateRes.templateJson) ? templateRes.templateJson : []);
+
+                            const lockItem = templateItems.find(
+                                (item) => "filename" in item && item.filename === "package-lock" && item.fileExtension === "json"
+                            );
+                            if (lockItem) {
+                                folder.items = [...(folder.items || []), lockItem];
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Could not backfill lockfile for existing project:", e);
+                    }
+                }
+
+                // If package.json has obsolete legacy bloat (@netlify/plugin-nextjs), clean it up
+                const pkgFile = folder.items?.find(
+                    (item) => "filename" in item && item.filename === "package" && item.fileExtension === "json"
+                ) as TemplateFile | undefined;
+                if (pkgFile && typeof pkgFile.content === "string" && pkgFile.content.includes("@netlify/plugin-nextjs")) {
+                    try {
+                        const pkgObj = JSON.parse(pkgFile.content);
+                        let modified = false;
+                        if (pkgObj.dependencies?.["@netlify/plugin-nextjs"]) {
+                            delete pkgObj.dependencies["@netlify/plugin-nextjs"];
+                            modified = true;
+                        }
+                        if (pkgObj.dependencies?.["@supabase/supabase-js"]) {
+                            delete pkgObj.dependencies["@supabase/supabase-js"];
+                            modified = true;
+                        }
+                        if (modified) {
+                            pkgFile.content = JSON.stringify(pkgObj, null, 2);
+                        }
+                    } catch {}
+                }
+
+                setTemplateData(folder);
                 return;
             }
 

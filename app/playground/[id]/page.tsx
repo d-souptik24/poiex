@@ -61,7 +61,6 @@ import {
     Code2,
     Download,
     Eye,
-    EyeOff,
     FileText,
     FileX,
     FolderOpen,
@@ -586,12 +585,14 @@ const MainPlaygroundPage = () => {
     }, [templateData, playgroundData]);
 
     const handleExplainTerminalError = useCallback(
-        (errorLogs: string) => {
-            const prompt = `I encountered this error in the terminal while running the project:\n\n\`\`\`\n${errorLogs}\n\`\`\`\n\nPlease diagnose the root cause and provide a surgical fix for the affected file.`;
+        (errorLogs: string, explicitPrompt?: string) => {
+            const prompt =
+                explicitPrompt ||
+                `I encountered this error in the terminal while running the project:\n\n\`\`\`\n${errorLogs}\n\`\`\`\n\nPlease diagnose the root cause and provide a surgical fix for the affected file.`;
             setTerminalDiagnosticPrompt(prompt);
             handleSetIsChatOpen(true);
-            toast.info("Terminal error loaded into AI Assistant.", {
-                description: "Review prompt and send to generate diagnosis.",
+            toast.info("Diagnostics loaded into PoiEx DevSpace.", {
+                description: "Review prompt and send to get an automated diagnosis.",
             });
         },
         [handleSetIsChatOpen]
@@ -836,7 +837,7 @@ const MainPlaygroundPage = () => {
                                 </ActionTooltip>
 
                                 <div className="hidden md:flex items-center">
-                                    <ActionTooltip label={isSplitView ? "Maximize Terminal (Hide Preview)" : "Split View (Show Preview & Terminal)"}>
+                                    <ActionTooltip label={isSplitView ? "Hide Terminal (Full Preview)" : "Split View (65% Preview / 35% Terminal)"}>
                                         <Button
                                             type="button"
                                             variant="ghost"
@@ -848,7 +849,7 @@ const MainPlaygroundPage = () => {
                                                     ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
                                                     : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40"
                                             )}
-                                            aria-label="Toggle Split View"
+                                            aria-label="Toggle Bottom Terminal Panel"
                                         >
                                             <PanelBottom className="h-3.5 w-3.5" />
                                         </Button>
@@ -877,65 +878,44 @@ const MainPlaygroundPage = () => {
                             <DropdownMenu>
                                 <DropdownMenuTrigger
                                     render={
-                                        <Button size="sm" variant="outline" className="h-8 w-8 p-0 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 w-8 p-0 border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors data-popup-open:bg-zinc-100 dark:data-popup-open:bg-zinc-800 data-popup-open:text-zinc-950 dark:data-popup-open:text-zinc-100 cursor-pointer"
+                                            aria-label="Editor Settings & Workspace Options"
+                                        >
                                             <Settings className="h-3.5 w-3.5" />
                                         </Button>
                                     }
                                 />
                                 <DropdownMenuContent
                                     align="end"
-                                    className="w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                                    sideOffset={14}
+                                    collisionPadding={12}
+                                    className="w-56 p-1.5 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800/90 text-zinc-900 dark:text-zinc-100 shadow-2xl shadow-zinc-950/15 dark:shadow-black/60 rounded-xl font-sans"
                                 >
                                     <DropdownMenuGroup>
-                                        {/* Mobile-Only Quick Actions */}
-                                        <DropdownMenuItem
-                                            onClick={handleExportZip}
-                                            disabled={isExportingZip}
-                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
-                                        >
-                                            <Download className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                            <span>Export ZIP</span>
-                                        </DropdownMenuItem>
+                                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase font-mono">
+                                            Appearance
+                                        </DropdownMenuLabel>
 
-                                        <DropdownMenuItem
-                                            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
-                                        >
-                                            <Palette className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                            <span>{resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem
-                                            onClick={() => toggleSplitView()}
-                                            className="hidden md:flex cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 items-center gap-2.5 transition-colors"
-                                        >
-                                            {isSplitView ? (
-                                                <EyeOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                            ) : (
-                                                <Eye className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                            )}
-                                            <span>{isSplitView ? "Maximize Terminal (Hide Preview)" : "Split View (Show Preview & Terminal)"}</span>
-                                        </DropdownMenuItem>
-
-                                        <DropdownMenuItem
-                                            onClick={toggleRightPanel}
-                                            className="hidden md:flex cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 items-center gap-2.5 transition-colors"
-                                        >
-                                            <Terminal className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                            <span>{isRightPanelOpen ? "Collapse Right Panel" : "Expand Right Panel"}</span>
-                                        </DropdownMenuItem>
-
+                                        {/* Editor Theme Submenu */}
                                         <DropdownMenuSub>
                                             <DropdownMenuSubTrigger
                                                 className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 data-popup-open:bg-zinc-100 dark:data-popup-open:bg-zinc-800 data-popup-open:text-zinc-950 dark:data-popup-open:text-zinc-100 data-open:bg-zinc-100 dark:data-open:bg-zinc-800 data-open:text-zinc-950 dark:data-open:text-zinc-100 flex items-center gap-2.5 transition-colors"
                                             >
                                                 <Palette className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-                                                <span>Editor Theme</span>
+                                                <span className="flex-1 text-left">Editor Theme</span>
+                                                <span className="text-[10px] text-zinc-400 dark:text-zinc-500 font-mono capitalize">
+                                                    {EDITOR_THEMES.find((t) => t.id === activeEditorTheme)?.label ?? "Default"}
+                                                </span>
                                             </DropdownMenuSubTrigger>
                                             <DropdownMenuSubContent
-                                                className="w-48 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
+                                                className="w-52 p-1.5 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800/90 text-zinc-900 dark:text-zinc-100 shadow-2xl shadow-zinc-950/15 dark:shadow-black/60 rounded-xl font-sans"
+                                                sideOffset={6}
+                                                alignOffset={-5}
                                             >
-                                                <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-400 tracking-wider uppercase font-mono">
+                                                <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase font-mono">
                                                     Themes
                                                 </DropdownMenuLabel>
                                                 {EDITOR_THEMES.map((theme) => (
@@ -963,14 +943,34 @@ const MainPlaygroundPage = () => {
                                     <DropdownMenuSeparator className="my-1.5 bg-zinc-200 dark:bg-zinc-800" />
 
                                     <DropdownMenuGroup>
-                                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-500 dark:text-zinc-400 tracking-wider uppercase font-mono">
+                                        <DropdownMenuLabel className="px-2.5 py-1 text-[10px] font-semibold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase font-mono">
                                             Actions
                                         </DropdownMenuLabel>
+
+                                        {/* Mobile-Only Quick Actions */}
+                                        <DropdownMenuItem
+                                            onClick={handleExportZip}
+                                            disabled={isExportingZip}
+                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                        >
+                                            <Download className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            <span>Export ZIP</span>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem
+                                            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                        >
+                                            <Palette className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            <span>{resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+                                        </DropdownMenuItem>
+
                                         <DropdownMenuItem
                                             onClick={closeAllFiles}
-                                            className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 focus:bg-red-50 dark:focus:bg-red-950/30 focus:text-red-700 dark:focus:text-red-300 flex items-center gap-2.5 transition-colors"
+                                            disabled={openFiles.length === 0}
+                                            className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 focus:bg-rose-50 dark:focus:bg-rose-950/40 focus:text-rose-700 dark:focus:text-rose-300 flex items-center gap-2.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
-                                            <FileX className="h-3.5 w-3.5 text-red-600 dark:text-red-400 shrink-0" />
+                                            <FileX className="h-3.5 w-3.5 shrink-0 text-rose-500" />
                                             <span>Close All Files</span>
                                         </DropdownMenuItem>
                                     </DropdownMenuGroup>
@@ -1276,7 +1276,6 @@ const MainPlaygroundPage = () => {
                                         onExplainError={handleExplainTerminalError}
                                         isSplitView={isSplitView}
                                         onToggleSplitView={toggleSplitView}
-                                        onToggleRightPanel={toggleRightPanel}
                                         activeMobileTab={mobileTab}
                                     />
                                 </div>

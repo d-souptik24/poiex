@@ -7,4 +7,5 @@ export const templatePaths: Record<Templates, string> = {
     VUE: "poiex-starters/vue",
     HONO: "poiex-starters/hono-nodejs-starter",
     ANGULAR: "poiex-starters/angular",
+    CUSTOM: "",
 } as const;
