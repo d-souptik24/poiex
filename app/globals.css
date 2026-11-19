@@ -201,3 +201,53 @@ body:has([data-separator="active"]) .monaco-editor {
 .animate-indeterminate {
   animation: indeterminate-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* Mobile playground full-width panel overrides */
+@media (max-width: 767.98px) {
+  /* Main horizontal split in playground page */
+  [data-mobile-tab="code"] > #editor-panel {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  [data-mobile-tab="code"] > #preview-panel {
+    display: none !important;
+  }
+
+  [data-mobile-tab="preview"] > #editor-panel,
+  [data-mobile-tab="terminal"] > #editor-panel {
+    display: none !important;
+  }
+  [data-mobile-tab="preview"] > #preview-panel,
+  [data-mobile-tab="terminal"] > #preview-panel {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Sub-vertical split inside WebContainerPreview */
+  [data-mobile-preview-tab="preview"] > #preview-window {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+  }
+  [data-mobile-preview-tab="preview"] > #terminal-window {
+    display: none !important;
+  }
+
+  [data-mobile-preview-tab="terminal"] > #preview-window {
+    display: none !important;
+  }
+  [data-mobile-preview-tab="terminal"] > #terminal-window {
+    display: flex !important;
+    flex: 1 1 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    width: 100% !important;
+  }
+}
+

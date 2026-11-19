@@ -26,13 +26,12 @@ import {
 } from "@/components/ui/resizable";
 import { usePanelRef } from "react-resizable-panels";
 import { cn } from "@/lib/utils";
-import { SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import {
-    Tooltip,
-    TooltipContent,
     TooltipProvider,
-    TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
+import { DeviceNotice } from "@/components/ui/device-notice";
 import LoadingStep from "@/modules/playground/components/loader";
 import { PlaygroundEditor } from "@/modules/playground/components/playground-editor";
 import { TemplateFileTree } from "@/modules/playground/components/playground-explorer";
@@ -57,20 +56,23 @@ import {
     AlertCircle,
     ArrowLeft,
     ArrowLeftRight,
-    Download,
-    ChevronRight,
     Check,
+    ChevronRight,
+    Code2,
+    Download,
     Eye,
     EyeOff,
     FileText,
     FileX,
     FolderOpen,
-
-
     Palette,
+    PanelBottom,
+    PanelLeft,
+    PanelRight,
     RotateCcw,
     Save,
     Settings,
+    Terminal,
     X,
 } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -114,44 +116,99 @@ const setEditorThemePreference = (newTheme: string) => {
 const MainPlaygroundPage = () => {
     const { id } = useParams<{ id: string }>();
     const user = useCurrentUser();
-    const { open } = useSidebar();
-    const { resolvedTheme } = useTheme();
-    const [isPreviewVisible, setIsPreviewVisible] = useState(() => {
+    const { open: isSidebarOpen, toggleSidebar } = useSidebar();
+    const { resolvedTheme, setTheme } = useTheme();
+
+    const [isRightPanelOpen, setIsRightPanelOpen] = useState(() => {
         try {
-            const saved = localStorage.getItem(`poiex-preview-visible-${id}`);
+            const saved = localStorage.getItem(`poiex-right-panel-open-${id}`);
             return saved !== null ? saved === "true" : true;
         } catch {
             return true;
         }
     });
+
+    const [isSplitView, setIsSplitView] = useState(() => {
+        try {
+            const saved = localStorage.getItem(`poiex-split-view-${id}`);
+            return saved !== null ? saved === "true" : true;
+        } catch {
+            return true;
+        }
+    });
+
+    const [mobileTab, setMobileTab] = useState<"code" | "preview" | "terminal">("code");
+
+    const editorPanelRef = usePanelRef();
     const previewPanelRef = usePanelRef();
 
-    const togglePreview = useCallback(() => {
+    const toggleRightPanel = useCallback(() => {
         const panel = previewPanelRef.current;
-        if (panel) {
+        if (panel?.isCollapsed() || !isRightPanelOpen) {
+            panel?.resize("50%");
+            setIsRightPanelOpen(true);
+            try {
+                localStorage.setItem(`poiex-right-panel-open-${id}`, "true");
+            } catch {}
+        } else {
+            panel?.collapse();
+            setIsRightPanelOpen(false);
+            try {
+                localStorage.setItem(`poiex-right-panel-open-${id}`, "false");
+            } catch {}
+        }
+    }, [previewPanelRef, isRightPanelOpen, id]);
+
+    const toggleSplitView = useCallback((explicit?: boolean) => {
+        // If right panel is currently closed, opening split view should also open the right panel
+        if (!isRightPanelOpen) {
+            setIsRightPanelOpen(true);
+            try {
+                localStorage.setItem(`poiex-right-panel-open-${id}`, "true");
+            } catch {}
+            setIsSplitView(true);
+            try {
+                localStorage.setItem(`poiex-split-view-${id}`, "true");
+            } catch {}
+            previewPanelRef.current?.resize("50%");
+            return;
+        }
+
+        setIsSplitView((prev) => {
+            const next = explicit !== undefined ? explicit : !prev;
+            try {
+                localStorage.setItem(`poiex-split-view-${id}`, String(next));
+            } catch {}
+            return next;
+        });
+    }, [isRightPanelOpen, previewPanelRef, id]);
+
+    // Synchronize horizontal split between Editor and Right Panel (Preview & Terminal)
+    useEffect(() => {
+        const panel = previewPanelRef.current;
+        if (!panel) return;
+        if (isRightPanelOpen) {
             if (panel.isCollapsed()) {
-                panel.expand();
-                setIsPreviewVisible(true);
-                try {
-                    localStorage.setItem(`poiex-preview-visible-${id}`, "true");
-                } catch {}
-            } else {
-                panel.collapse();
-                setIsPreviewVisible(false);
-                try {
-                    localStorage.setItem(`poiex-preview-visible-${id}`, "false");
-                } catch {}
+                panel.resize("50%");
             }
         } else {
-            setIsPreviewVisible((prev) => {
-                const next = !prev;
-                try {
-                    localStorage.setItem(`poiex-preview-visible-${id}`, String(next));
-                } catch {}
-                return next;
-            });
+            if (!panel.isCollapsed()) {
+                panel.collapse();
+            }
         }
-    }, [previewPanelRef, id]);
+    }, [isRightPanelOpen, previewPanelRef]);
+
+    // Keyboard shortcut: Ctrl+J / Cmd+J to toggle right panel
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "j") {
+                e.preventDefault();
+                toggleRightPanel();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [toggleRightPanel]);
 
     const [isChatOpen, setIsChatOpen] = useState(() => {
         try {
@@ -639,7 +696,10 @@ const MainPlaygroundPage = () => {
                 {templateData && (
                     <TemplateFileTree
                         data={templateData}
-                        onFileSelect={openFile}
+                        onFileSelect={(file) => {
+                            setMobileTab("code");
+                            openFile(file);
+                        }}
                         selectedFile={activeFile}
                         onAddFile={wrappedHandleAddFile}
                         onAddFolder={wrappedHandleAddFolder}
@@ -652,108 +712,97 @@ const MainPlaygroundPage = () => {
                                 <SidebarInset className="flex flex-col h-screen overflow-hidden bg-background border-l border-zinc-300 dark:border-zinc-800">
                     {/* Workspace Top Header (h-13 / 52px matches explorer bar) */}
                     <header className="flex h-13 shrink-0 items-center justify-between border-b border-zinc-300 dark:border-zinc-800 px-4 bg-white dark:bg-zinc-950 select-none transition-colors">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            {!open && (
-                                <SidebarTrigger className="h-8 w-8 border-0 bg-transparent text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-md" />
-                            )}
-
+                        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
                             {/* Back to Dashboard Button */}
-                            <Tooltip>
-                                <TooltipTrigger
-                                    render={
-                                        <Link
-                                            href="/dashboard"
-                                            className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
-                                            aria-label="Back to Dashboard"
-                                        >
-                                            <ArrowLeft className="h-4 w-4" />
-                                        </Link>
-                                    }
-                                />
-                                <TooltipContent side="bottom" className="text-xs">
-                                    Back to Dashboard
-                                </TooltipContent>
-                            </Tooltip>
+                            <ActionTooltip label="Back to Dashboard" side="bottom">
+                                <Link
+                                    href="/dashboard"
+                                    className="h-8 w-8 rounded-md flex items-center justify-center text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors shrink-0"
+                                    aria-label="Back to Dashboard"
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                </Link>
+                            </ActionTooltip>
 
                             {/* PoiEx Brand Logo */}
-                            <Link
-                                href="/dashboard"
-                                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity shrink-0"
-                                title="PoiEx Dashboard"
-                            >
-                                <Image
-                                    src="/logo.svg"
-                                    alt="PoiEx"
-                                    width={24}
-                                    height={24}
-                                    className="h-6 w-6 object-contain"
-                                />
-                            </Link>
+                            <ActionTooltip label="PoiEx Dashboard">
+                                <Link
+                                    href="/dashboard"
+                                    className="flex items-center gap-1.5 hover:opacity-80 transition-opacity shrink-0"
+                                >
+                                    <Image
+                                        src="/logo.svg"
+                                        alt="PoiEx"
+                                        width={24}
+                                        height={24}
+                                        className="h-6 w-6 object-contain"
+                                    />
+                                </Link>
+                            </ActionTooltip>
 
-                            <span className="text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
+                            <span className="hidden md:inline text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
 
-                            {/* User Profile Avatar */}
-                            <Avatar className="h-6 w-6 shrink-0 ring-1 ring-zinc-300 dark:ring-zinc-700" title={user?.name || "User"}>
-                                <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? undefined} />
-                                <AvatarFallback className="bg-purple-600 text-white text-[11px] font-semibold">
-                                    {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
-                                </AvatarFallback>
-                            </Avatar>
+                            {/* User Profile Avatar (Desktop Only) */}
+                            <div className="hidden md:flex">
+                                <ActionTooltip label={user?.name || "User"}>
+                                    <Avatar className="h-6 w-6 shrink-0 ring-1 ring-zinc-300 dark:ring-zinc-700">
+                                        <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? undefined} />
+                                        <AvatarFallback className="bg-purple-600 text-white text-[11px] font-semibold">
+                                            {user?.name ? user.name.charAt(0).toUpperCase() : "U"}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </ActionTooltip>
+                            </div>
 
-                            <span className="text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
+                            <span className="hidden md:inline text-zinc-300 dark:text-zinc-700 font-light select-none text-sm">/</span>
 
                             {/* Project Name with Icon */}
-                            <div className="flex items-center gap-2 text-zinc-900 dark:text-zinc-100 font-semibold text-xs select-none truncate">
+                            <div className="flex items-center gap-1.5 text-zinc-900 dark:text-zinc-100 font-semibold text-xs select-none min-w-0">
                                 <FolderOpen className="h-3.5 w-3.5 text-zinc-500 dark:text-zinc-400 shrink-0" />
-                                <span className="truncate">{playgroundData?.title || "Project Playground"}</span>
+                                <span className="truncate max-w-[100px] xs:max-w-[130px] sm:max-w-[180px] md:max-w-none">{playgroundData?.title || "Project Playground"}</span>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <Tooltip>
-                                <TooltipTrigger
-                                    render={
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={handleSave}
-                                            disabled={!hasUnsavedChanges}
-                                            className={cn(
-                                                "h-8 px-3 text-xs font-medium rounded-md gap-1.5 transition-colors",
-                                                hasUnsavedChanges
-                                                    ? "border-amber-500/60 text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100/60 dark:hover:bg-amber-500/20"
-                                                    : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100"
-                                            )}
-                                        >
-                                            <Save className="h-3.5 w-3.5" />
-                                            <span>Save</span>
-                                            {hasUnsavedChanges && (
-                                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-                                            )}
-                                        </Button>
-                                    }
-                                />
-                                <TooltipContent side="bottom" className="text-xs">Save all changes (Ctrl+S)</TooltipContent>
-                            </Tooltip>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                            {/* Save Button: icon on mobile, icon+label on desktop */}
+                            <ActionTooltip label="Save all changes (Ctrl+S)" side="bottom">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleSave}
+                                    disabled={!hasUnsavedChanges}
+                                    className={cn(
+                                        "h-8 px-2 sm:px-3 text-xs font-medium rounded-md gap-1.5 transition-colors",
+                                        hasUnsavedChanges
+                                            ? "border-amber-500/60 text-amber-700 dark:text-amber-300 bg-amber-50/50 dark:bg-amber-500/10 hover:bg-amber-100/60 dark:hover:bg-amber-500/20"
+                                            : "border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100"
+                                    )}
+                                >
+                                    <Save className="h-3.5 w-3.5" />
+                                    <span className="hidden sm:inline">Save</span>
+                                    {hasUnsavedChanges && (
+                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                    )}
+                                </Button>
+                            </ActionTooltip>
 
-                            <Tooltip>
-                                <TooltipTrigger
-                                    render={
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={handleExportZip}
-                                            disabled={isExportingZip}
-                                            className="h-8 px-2.5 text-xs font-medium rounded-md gap-1.5 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors"
-                                        >
-                                            <Download className="h-3.5 w-3.5" />
-                                            <span className="hidden md:inline">Export ZIP</span>
-                                        </Button>
-                                    }
-                                />
-                                <TooltipContent side="bottom" className="text-xs">Download project as ready-to-run ZIP</TooltipContent>
-                            </Tooltip>
+                            {/* Export ZIP: Desktop Only button, mobile accesses via Settings dropdown */}
+                            <div className="hidden md:flex">
+                                <ActionTooltip label="Download project as ready-to-run ZIP" side="bottom">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={handleExportZip}
+                                        disabled={isExportingZip}
+                                        className="h-8 px-2.5 text-xs font-medium rounded-md gap-1.5 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors"
+                                    >
+                                        <Download className="h-3.5 w-3.5" />
+                                        <span>Export ZIP</span>
+                                    </Button>
+                                </ActionTooltip>
+                            </div>
 
+                            {/* Toggle AI: Always accessible */}
                             <ToggleAI
                                 isEnabled={aiSuggestions.isEnabled}
                                 onToggle={aiSuggestions.toggleEnabled}
@@ -761,7 +810,69 @@ const MainPlaygroundPage = () => {
                                 onOpenChat={() => handleSetIsChatOpen(true)}
                             />
 
-                            <ThemeToggle />
+                            {/* Theme Toggle: Desktop Only, mobile accesses via Settings dropdown */}
+                            <div className="hidden md:flex">
+                                <ThemeToggle />
+                            </div>
+
+                            {/* Antigravity IDE-Style Layout Controller Group */}
+                            <div className="flex items-center rounded-lg border border-zinc-200 dark:border-zinc-800 p-0.5 bg-zinc-100/70 dark:bg-zinc-900/60 shadow-2xs">
+                                <ActionTooltip label={isSidebarOpen ? "Collapse Side Bar (Ctrl+B)" : "Expand Side Bar (Ctrl+B)"}>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={toggleSidebar}
+                                        className={cn(
+                                            "h-7 w-7 p-0 rounded-md transition-colors cursor-pointer",
+                                            isSidebarOpen
+                                                ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                                                : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40"
+                                        )}
+                                        aria-label="Toggle Side Bar"
+                                    >
+                                        <PanelLeft className="h-3.5 w-3.5" />
+                                    </Button>
+                                </ActionTooltip>
+
+                                <div className="hidden md:flex items-center">
+                                    <ActionTooltip label={isSplitView ? "Maximize Terminal (Hide Preview)" : "Split View (Show Preview & Terminal)"}>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => toggleSplitView()}
+                                            className={cn(
+                                                "h-7 w-7 p-0 rounded-md transition-colors cursor-pointer",
+                                                isSplitView
+                                                    ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                                                    : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40"
+                                            )}
+                                            aria-label="Toggle Split View"
+                                        >
+                                            <PanelBottom className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </ActionTooltip>
+
+                                    <ActionTooltip label={isRightPanelOpen ? "Collapse Right Panel (Full Editor)" : "Expand Right Panel"}>
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={toggleRightPanel}
+                                            className={cn(
+                                                "h-7 w-7 p-0 rounded-md transition-colors cursor-pointer",
+                                                isRightPanelOpen
+                                                    ? "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-2xs"
+                                                    : "text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/40"
+                                            )}
+                                            aria-label="Toggle Right Panel"
+                                        >
+                                            <PanelRight className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </ActionTooltip>
+                                </div>
+                            </div>
 
                             <DropdownMenu>
                                 <DropdownMenuTrigger
@@ -776,16 +887,42 @@ const MainPlaygroundPage = () => {
                                     className="w-56 p-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-xl rounded-xl font-sans"
                                 >
                                     <DropdownMenuGroup>
+                                        {/* Mobile-Only Quick Actions */}
                                         <DropdownMenuItem
-                                            onClick={togglePreview}
-                                            className="cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                            onClick={handleExportZip}
+                                            disabled={isExportingZip}
+                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
                                         >
-                                            {isPreviewVisible ? (
+                                            <Download className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            <span>Export ZIP</span>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem
+                                            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                                            className="md:hidden cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 flex items-center gap-2.5 transition-colors"
+                                        >
+                                            <Palette className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            <span>{resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem
+                                            onClick={() => toggleSplitView()}
+                                            className="hidden md:flex cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 items-center gap-2.5 transition-colors"
+                                        >
+                                            {isSplitView ? (
                                                 <EyeOff className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                                             ) : (
                                                 <Eye className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
                                             )}
-                                            <span>{isPreviewVisible ? "Hide Preview" : "Show Preview"}</span>
+                                            <span>{isSplitView ? "Maximize Terminal (Hide Preview)" : "Split View (Show Preview & Terminal)"}</span>
+                                        </DropdownMenuItem>
+
+                                        <DropdownMenuItem
+                                            onClick={toggleRightPanel}
+                                            className="hidden md:flex cursor-pointer text-xs py-2 px-2.5 rounded-lg text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-zinc-100 focus:bg-zinc-100 dark:focus:bg-zinc-800 focus:text-zinc-950 dark:focus:text-zinc-100 items-center gap-2.5 transition-colors"
+                                        >
+                                            <Terminal className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
+                                            <span>{isRightPanelOpen ? "Collapse Right Panel" : "Expand Right Panel"}</span>
                                         </DropdownMenuItem>
 
                                         <DropdownMenuSub>
@@ -842,17 +979,76 @@ const MainPlaygroundPage = () => {
                         </div>
                     </header>
 
+                    {/* Mobile Segmented Workspace Switcher */}
+                    <div className="flex md:hidden items-center justify-between h-10 px-3 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 select-none">
+                        <div className="flex items-center gap-1 w-full bg-zinc-200/70 dark:bg-zinc-800/70 p-0.5 rounded-lg text-xs font-medium">
+                            <button
+                                type="button"
+                                onClick={() => setMobileTab("code")}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md transition-all cursor-pointer",
+                                    mobileTab === "code"
+                                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-zinc-50 shadow-xs font-semibold"
+                                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                )}
+                            >
+                                <Code2 className="h-3.5 w-3.5" />
+                                <span>Code</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMobileTab("preview");
+                                    setIsRightPanelOpen(true);
+                                    setIsSplitView(true);
+                                }}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md transition-all cursor-pointer",
+                                    mobileTab === "preview"
+                                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-zinc-50 shadow-xs font-semibold"
+                                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                )}
+                            >
+                                <Eye className="h-3.5 w-3.5" />
+                                <span>Preview</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMobileTab("terminal");
+                                    setIsRightPanelOpen(true);
+                                    setIsSplitView(false);
+                                }}
+                                className={cn(
+                                    "flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded-md transition-all cursor-pointer",
+                                    mobileTab === "terminal"
+                                        ? "bg-white dark:bg-zinc-900 text-zinc-950 dark:text-zinc-50 shadow-xs font-semibold"
+                                        : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                                )}
+                            >
+                                <Terminal className="h-3.5 w-3.5" />
+                                <span>Terminal</span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Resizable Editor & Preview/Terminal Workspace */}
-                    <div className="flex-1 min-h-0 w-full overflow-hidden">
+                    <div className="flex-1 min-h-0 w-full overflow-hidden relative">
+                        {/* Mobile & Tablet WebContainer Advisory Notice (Non-shifting overlay) */}
+                        <DeviceNotice scope="editor" />
                         <ResizablePanelGroup
                             orientation="horizontal"
                             className="h-full w-full"
+                            data-mobile-tab={mobileTab}
                         >
-                            {/* Editor Panel */}
+                            {/* Editor Panel - Core Canvas */}
                             <ResizablePanel
                                 id="editor-panel"
-                                defaultSize={50}
-                                minSize={25}
+                                panelRef={editorPanelRef}
+                                defaultSize="50%"
+                                minSize="25%"
+                                collapsible={false}
+                                className="h-full w-full overflow-hidden"
                             >
                                 {openFiles.length > 0 ? (
                                     <div className="h-full flex flex-col bg-white dark:bg-[#0d1117] transition-colors">
@@ -886,10 +1082,11 @@ const MainPlaygroundPage = () => {
                                                             </span>
 
                                                             {file.hasUnsavedChanges && (
-                                                                <span
-                                                                    className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0"
-                                                                    title="Unsaved changes"
-                                                                />
+                                                                <ActionTooltip label="Unsaved changes">
+                                                                    <span
+                                                                        className="h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0 inline-block"
+                                                                    />
+                                                                </ActionTooltip>
                                                             )}
 
                                                             <span
@@ -968,35 +1165,38 @@ const MainPlaygroundPage = () => {
                                                     <div className="h-3.5 w-px bg-zinc-700/80 mx-0.5 shrink-0" />
 
                                                     <div className="flex items-center gap-1">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => handleReviewDiff(activeFile?.content || "")}
-                                                            className="h-6 px-2 text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
-                                                            title="Review side-by-side diff"
-                                                        >
-                                                            <ArrowLeftRight className="h-2.5 w-2.5 text-cyan-400" />
-                                                            <span>Diff</span>
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={handleRejectCode}
-                                                            className="h-6 px-2 text-[11px] font-medium text-zinc-400 hover:text-rose-400 hover:bg-rose-500/15 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
-                                                            title="Revert changes"
-                                                        >
-                                                            <RotateCcw className="h-2.5 w-2.5" />
-                                                            <span>Revert</span>
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={handleAcceptCode}
-                                                            className="h-6 px-2.5 text-[11px] font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-xs flex items-center gap-1 transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                                                            title="Accept and keep changes"
-                                                        >
-                                                            <Check className="h-2.5 w-2.5" />
-                                                            <span>Keep</span>
-                                                        </Button>
+                                                        <ActionTooltip label="Review side-by-side diff">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => handleReviewDiff(activeFile?.content || "")}
+                                                                className="h-6 px-2 text-[11px] font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-400"
+                                                            >
+                                                                <ArrowLeftRight className="h-2.5 w-2.5 text-cyan-400" />
+                                                                <span>Diff</span>
+                                                            </Button>
+                                                        </ActionTooltip>
+                                                        <ActionTooltip label="Revert changes">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={handleRejectCode}
+                                                                className="h-6 px-2 text-[11px] font-medium text-zinc-400 hover:text-rose-400 hover:bg-rose-500/15 rounded-full transition-colors flex items-center gap-1 whitespace-nowrap focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
+                                                            >
+                                                                <RotateCcw className="h-2.5 w-2.5" />
+                                                                <span>Revert</span>
+                                                            </Button>
+                                                        </ActionTooltip>
+                                                        <ActionTooltip label="Accept and keep changes">
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={handleAcceptCode}
+                                                                className="h-6 px-2.5 text-[11px] font-medium bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-xs flex items-center gap-1 transition-all whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                                                            >
+                                                                <Check className="h-2.5 w-2.5" />
+                                                                <span>Keep</span>
+                                                            </Button>
+                                                        </ActionTooltip>
                                                     </div>
                                                 </div>
                                             )}
@@ -1032,41 +1232,36 @@ const MainPlaygroundPage = () => {
                             {/* Resizable Handle between Editor and Live Preview */}
                             <ResizableHandle
                                 withHandle
-                                disabled={!isPreviewVisible}
-                                className={cn(!isPreviewVisible && "hidden")}
+                                className={cn("hidden md:flex", !isRightPanelOpen && "md:hidden")}
                             />
 
                             {/* Live Preview Panel (Kept permanently mounted to preserve WebContainer session & terminal) */}
                             <ResizablePanel
                                 id="preview-panel"
                                 panelRef={previewPanelRef}
-                                defaultSize={50}
-                                minSize={20}
+                                defaultSize="50%"
+                                minSize="20%"
                                 collapsible={true}
-                                collapsedSize={0}
-                                onResize={(panelSize) => {
-                                    const isExpanded = panelSize.asPercentage > 0;
-                                    setIsPreviewVisible((prev) => {
-                                        if (prev !== isExpanded) {
-                                            try {
-                                                localStorage.setItem(`poiex-preview-visible-${id}`, String(isExpanded));
-                                            } catch {}
-                                            return isExpanded;
-                                        }
-                                        return prev;
-                                    });
-                                }}
+                                collapsedSize="0%"
                                 className={cn(
-                                    "overflow-hidden",
-                                    !isPreviewVisible && "pointer-events-none"
+                                    "h-full w-full overflow-hidden",
+                                    !isRightPanelOpen && "md:pointer-events-none"
                                 )}
+                                onResize={(size) => {
+                                    if (size.asPercentage <= 2 && isRightPanelOpen) {
+                                        setIsRightPanelOpen(false);
+                                        try {
+                                            localStorage.setItem(`poiex-right-panel-open-${id}`, "false");
+                                        } catch {}
+                                    } else if (size.asPercentage > 2 && !isRightPanelOpen) {
+                                        setIsRightPanelOpen(true);
+                                        try {
+                                            localStorage.setItem(`poiex-right-panel-open-${id}`, "true");
+                                        } catch {}
+                                    }
+                                }}
                             >
-                                <div
-                                    className={cn(
-                                        "h-full w-full",
-                                        !isPreviewVisible && "invisible pointer-events-none"
-                                    )}
-                                >
+                                <div className="h-full w-full overflow-hidden">
                                     <WebContainerPreview
                                         key={id}
                                         playgroundId={id}
@@ -1079,6 +1274,10 @@ const MainPlaygroundPage = () => {
                                         forceResetup={false}
                                         lastSavedAt={lastSavedAt}
                                         onExplainError={handleExplainTerminalError}
+                                        isSplitView={isSplitView}
+                                        onToggleSplitView={toggleSplitView}
+                                        onToggleRightPanel={toggleRightPanel}
+                                        activeMobileTab={mobileTab}
                                     />
                                 </div>
                             </ResizablePanel>
