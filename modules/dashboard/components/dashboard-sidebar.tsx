@@ -33,8 +33,10 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
     SidebarRail,
+    SidebarTrigger,
 } from "@/components/ui/sidebar"
 import Image from "next/image"
+import { ActionTooltip } from "@/components/ui/action-tooltip"
 
 // Define the interface for a single playground item, icon is now a string
 interface PlaygroundData {
@@ -113,7 +115,13 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
 
     return (
         <Sidebar variant="inset" collapsible="icon" className="border-r border-zinc-200 dark:border-sidebar-border bg-white dark:bg-sidebar transition-colors">
-            <SidebarHeader className="pt-3 pb-1">
+            {/* Mobile Drawer Top Header: Explicit Close/Collapse Toggle without redundant brand logo */}
+            <div className="flex md:hidden items-center justify-end px-3 py-2.5 border-b border-zinc-200 dark:border-sidebar-border shrink-0">
+                <SidebarTrigger />
+            </div>
+
+            {/* Desktop Sidebar Header: Brand Logo & Title (hidden on mobile drawer) */}
+            <SidebarHeader className="hidden md:flex pt-3 pb-1">
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton
@@ -173,9 +181,11 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
                         <Star className="h-4 w-4 mr-2" />
                         Starred
                     </SidebarGroupLabel>
-                    <SidebarGroupAction title="Add starred playground">
-                        <Plus className="h-4 w-4" />
-                    </SidebarGroupAction>
+                    <ActionTooltip label="Add starred playground" side="right">
+                        <SidebarGroupAction>
+                            <Plus className="h-4 w-4" />
+                        </SidebarGroupAction>
+                    </ActionTooltip>
                     <SidebarGroupContent>
                         <SidebarMenu>
 
@@ -207,9 +217,11 @@ export function DashboardSidebar({ initialPlaygroundData }: { initialPlaygroundD
                         <History className="h-4 w-4 mr-2" />
                         Recent
                     </SidebarGroupLabel>
-                    <SidebarGroupAction title="Create new playground">
-                        <FolderPlus className="h-4 w-4" />
-                    </SidebarGroupAction>
+                    <ActionTooltip label="Create new playground" side="right">
+                        <SidebarGroupAction>
+                            <FolderPlus className="h-4 w-4" />
+                        </SidebarGroupAction>
+                    </ActionTooltip>
                     <SidebarGroupContent>
                         <SidebarMenu>
                             {starredPlaygrounds.length === 0 && recentPlaygrounds.length === 0 ? null : (

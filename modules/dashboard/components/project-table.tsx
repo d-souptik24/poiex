@@ -4,6 +4,7 @@ import Image from "next/image";
 import { format } from "date-fns";
 import type { Project } from "../types";
 import { Badge } from "@/components/ui/badge";
+import { ActionTooltip } from "@/components/ui/action-tooltip";
 import {
   Table,
   TableBody,
@@ -308,6 +309,99 @@ export default function ProjectTable({
     return "bg-rose-500/10 text-rose-500 border-rose-500/20 hover:bg-rose-500/20";
   };
 
+  const renderProjectActions = (project: Project) => (
+    <DropdownMenu>
+      <ActionTooltip label="More actions" side="left">
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          }
+        />
+      </ActionTooltip>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem
+          nativeButton
+          render={
+            <MarkedToggleButton
+              markedForRevision={
+                project.Starmark?.[0]?.isMarked ?? false
+              }
+              id={project.id}
+            />
+          }
+        />
+        <DropdownMenuItem
+          render={
+            <Link
+              href={`/playground/${project.id}`}
+              className="flex items-center"
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              Open Project
+            </Link>
+          }
+        />
+        <DropdownMenuItem
+          render={
+            <Link
+              href={`/playground/${project.id}`}
+              target="_blank"
+              className="flex items-center"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open in New Tab
+            </Link>
+          }
+        />
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => handleEditClick(project)}
+        >
+          <Edit3 className="h-4 w-4 mr-2" />
+          Edit Project
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => handleDuplicateProject(project)}
+        >
+          <Copy className="h-4 w-4 mr-2" />
+          Duplicate
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => handleDownloadZip(project)}
+          disabled={exportingId === project.id}
+        >
+          {exportingId === project.id ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin text-[#E93F3F]" />
+          ) : (
+            <Download className="h-4 w-4 mr-2" />
+          )}
+          Download as ZIP
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => copyProjectUrl(project.id)}
+        >
+          <ExternalLink className="h-4 w-4 mr-2" />
+          Copy URL
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => handleDeleteClick(project)}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete Project
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <>
       <div className="w-full bg-white dark:bg-card border border-zinc-200/90 dark:border-zinc-800 rounded-xl shadow-[0_2px_12px_rgba(0,0,0,0.03)] overflow-hidden transition-colors">
@@ -321,7 +415,75 @@ export default function ProjectTable({
             </span>
           </div>
         </div>
-        <Table className="table-fixed w-full">
+
+        {/* Mobile Responsive Project Cards */}
+        <div className="flex flex-col divide-y divide-zinc-200/80 dark:divide-zinc-800/80 md:hidden">
+          {projectList.map((project) => {
+            const isStarred = Boolean(project.Starmark?.[0]?.isMarked);
+            return (
+              <div
+                key={`mobile-${project.id}`}
+                className="p-4 flex flex-col gap-2.5 hover:bg-zinc-50/70 dark:hover:bg-zinc-900/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <Link
+                      href={`/playground/${project.id}`}
+                      className="font-semibold text-sm text-zinc-900 dark:text-zinc-100 hover:text-rose-500 transition-colors truncate"
+                    >
+                      {project.title}
+                    </Link>
+                    {isStarred && (
+                      <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0 mt-0.5" />
+                    )}
+                  </div>
+                  <div className="shrink-0 -mr-1">
+                    {renderProjectActions(project)}
+                  </div>
+                </div>
+
+                {project.description ? (
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {project.description}
+                  </p>
+                ) : null}
+
+                <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] font-semibold tracking-wide py-0 px-1.5 uppercase ${getTemplateBadgeStyle(project.template)}`}
+                    >
+                      {project.template}
+                    </Badge>
+                    <span className="font-mono text-[11px]">
+                      {project.createdAt
+                        ? format(new Date(project.createdAt), "MMM dd, yyyy")
+                        : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-5 h-5 rounded-full overflow-hidden border border-zinc-200 dark:border-zinc-700 shrink-0">
+                      <Image
+                        src={project.user?.image || "/placeholder.svg"}
+                        alt={project.user?.name || "User"}
+                        width={20}
+                        height={20}
+                        className="object-cover"
+                      />
+                    </div>
+                    <span className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 truncate max-w-[90px]">
+                      {project.user?.name || "Anonymous"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop Responsive Table */}
+        <Table className="table-fixed w-full hidden md:table">
           <TableHeader className="bg-zinc-50/70 dark:bg-zinc-950/30">
             <TableRow className="border-b border-zinc-200/90 dark:border-zinc-800 hover:bg-transparent">
               <TableHead className="w-[45%] pl-5 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
@@ -364,12 +526,17 @@ export default function ProjectTable({
                           <Star className="h-3.5 w-3.5 text-amber-500 fill-amber-500 shrink-0" />
                         )}
                       </div>
-                      <span
-                        className="text-xs text-muted-foreground truncate block mt-0.5"
-                        title={project.description || ""}
-                      >
-                        {project.description || "No description provided"}
-                      </span>
+                      {project.description ? (
+                        <ActionTooltip label={project.description}>
+                          <span className="text-xs text-muted-foreground truncate block mt-0.5 cursor-default">
+                            {project.description}
+                          </span>
+                        </ActionTooltip>
+                      ) : (
+                        <span className="text-xs text-muted-foreground truncate block mt-0.5">
+                          No description provided
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="py-3.5">
@@ -404,94 +571,7 @@ export default function ProjectTable({
                     </div>
                   </TableCell>
                   <TableCell className="pr-5 py-3.5 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Open menu</span>
-                          </Button>
-                        }
-                      />
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem
-                          nativeButton
-                          render={
-                            <MarkedToggleButton
-                              markedForRevision={
-                                project.Starmark?.[0]?.isMarked ?? false
-                              }
-                              id={project.id}
-                            />
-                          }
-                        />
-                        <DropdownMenuItem
-                          render={
-                            <Link
-                              href={`/playground/${project.id}`}
-                              className="flex items-center"
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              Open Project
-                            </Link>
-                          }
-                        />
-                        <DropdownMenuItem
-                          render={
-                            <Link
-                              href={`/playground/${project.id}`}
-                              target="_blank"
-                              className="flex items-center"
-                            >
-                              <ExternalLink className="h-4 w-4 mr-2" />
-                              Open in New Tab
-                            </Link>
-                          }
-                        />
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleEditClick(project)}
-                        >
-                          <Edit3 className="h-4 w-4 mr-2" />
-                          Edit Project
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDuplicateProject(project)}
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Duplicate
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDownloadZip(project)}
-                          disabled={exportingId === project.id}
-                        >
-                          {exportingId === project.id ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin text-[#E93F3F]" />
-                          ) : (
-                            <Download className="h-4 w-4 mr-2" />
-                          )}
-                          Download as ZIP
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => copyProjectUrl(project.id)}
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Copy URL
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteClick(project)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Project
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {renderProjectActions(project)}
                   </TableCell>
                 </TableRow>
               );
