@@ -106,9 +106,11 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
                 }
 
                 if (wasModified) {
-                    SaveUpdatedCode(id, folder).catch((err) => {
+                    try {
+                        await SaveUpdatedCode(id, folder);
+                    } catch (err) {
                         console.warn("Failed to persist updated template data:", err);
-                    });
+                    }
                 }
 
                 setTemplateData(folder);
