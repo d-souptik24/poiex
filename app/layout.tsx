@@ -18,8 +18,18 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
-  title: "PoiEx - Next-Gen Web Development Platform",
+  title: {
+    template: "%s | PoiEx",
+    default: "PoiEx | In-Browser IDE",
+  },
   description: "Interactive in-browser IDE powered by WebContainers and AI",
+  icons: {
+    icon: [
+      { url: "/poiex-logo.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/poiex-logo.svg",
+    apple: "/poiex-logo.svg",
+  },
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

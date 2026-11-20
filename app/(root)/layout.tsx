@@ -5,8 +5,8 @@ import { Metadata } from "next";
 
 export const metadata: Metadata = {
     title: {
-        template: "PoiEX - AI Code Editor ",
-        default: "Code Editor For enthusiast - PoiEx",
+        template: "%s | PoiEx",
+        default: "PoiEx | Run Code Privately in Your Browser",
     },
 };
 export default function HomeLayout({

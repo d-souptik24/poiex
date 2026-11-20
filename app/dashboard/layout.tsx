@@ -3,8 +3,13 @@ import { getAllPlaygroundForUser } from "@/modules/dashboard/actions";
 import { DashboardSidebar } from "@/modules/dashboard/components/dashboard-sidebar";
 import { DeviceNotice } from "@/components/ui/device-notice";
 import UserButton from "@/modules/auth/components/user-button";
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+    title: "Dashboard",
+};
 
 export default async function DashboardLayout({
     children,
