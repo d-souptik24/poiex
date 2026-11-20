@@ -6,6 +6,9 @@ import { revalidatePath } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { parseGitHubUrl, fetchGitHubRepoAsTemplate } from "../lib/github";
 import { MAX_FREE_PROJECTS } from "../constants";
+import path from "path";
+import { templatePaths } from "@/lib/template";
+import { scanTemplateDirectory } from "@/modules/playground/lib/path-to-json";
 
 export const toggleStarMarked = async (
     playgroundId: string,
@@ -148,6 +151,27 @@ export const createPlayground = async (data: {
         });
 
         await enforceQuotaPostCreation(playground.id, user.id, user.role);
+
+        // Pre-seed starter files & package-lock.json into DB for zero-latency boots
+        if (template !== "CUSTOM") {
+            try {
+                const templatePath = templatePaths[template as keyof typeof templatePaths];
+                if (templatePath) {
+                    const inputPath = path.join(/*turbopackIgnore: true*/ process.cwd(), templatePath);
+                    const result = await scanTemplateDirectory(inputPath);
+                    if (result && Array.isArray(result.items) && result.items.length > 0) {
+                        await db.templateFile.create({
+                            data: {
+                                playgroundId: playground.id,
+                                content: JSON.stringify(result),
+                            },
+                        });
+                    }
+                }
+            } catch (seedErr) {
+                console.warn("Template pre-seeding skipped during playground creation:", seedErr);
+            }
+        }
 
         revalidatePath("/dashboard");
         return playground;

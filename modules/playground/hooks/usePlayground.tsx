@@ -56,6 +56,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
             ) {
                 const folder = parsedContent as TemplateFolder;
 
+                let wasModified = false;
                 // Auto-heal existing projects created before lockfile mounting
                 const hasLockfile = folder.items?.some(
                     (item) => "filename" in item && item.filename === "package-lock" && item.fileExtension === "json"
@@ -75,6 +76,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
                             );
                             if (lockItem) {
                                 folder.items = [...(folder.items || []), lockItem];
+                                wasModified = true;
                             }
                         }
                     } catch (e) {
@@ -89,19 +91,24 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
                 if (pkgFile && typeof pkgFile.content === "string" && pkgFile.content.includes("@netlify/plugin-nextjs")) {
                     try {
                         const pkgObj = JSON.parse(pkgFile.content);
-                        let modified = false;
                         if (pkgObj.dependencies?.["@netlify/plugin-nextjs"]) {
                             delete pkgObj.dependencies["@netlify/plugin-nextjs"];
-                            modified = true;
+                            wasModified = true;
                         }
                         if (pkgObj.dependencies?.["@supabase/supabase-js"]) {
                             delete pkgObj.dependencies["@supabase/supabase-js"];
-                            modified = true;
+                            wasModified = true;
                         }
-                        if (modified) {
+                        if (wasModified) {
                             pkgFile.content = JSON.stringify(pkgObj, null, 2);
                         }
                     } catch {}
+                }
+
+                if (wasModified) {
+                    SaveUpdatedCode(id, folder).catch((err) => {
+                        console.warn("Failed to persist updated template data:", err);
+                    });
                 }
 
                 setTemplateData(folder);
