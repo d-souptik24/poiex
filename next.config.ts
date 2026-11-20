@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
+  outputFileTracingIncludes: {
+    "/api/template/*": ["./poiex-starters/**/*"],
+    "/*": ["./poiex-starters/**/*"],
+  },
   images: {
     remotePatterns: [
       {

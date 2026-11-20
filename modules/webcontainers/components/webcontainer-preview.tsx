@@ -404,7 +404,12 @@ const WebContainerPreview = ({
           );
         }
 
-        const installArgs = ["install", "--no-fund"];
+        const installArgs = [
+          "install",
+          "--prefer-offline",
+          "--no-audit",
+          "--no-fund",
+        ];
 
         let capturedInstallOutput = "";
         const installProcess = await instance.spawn("npm", installArgs);
