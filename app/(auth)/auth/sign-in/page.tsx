@@ -1,6 +1,12 @@
 import React from "react";
 import Image from "next/image";
 import SignInFormClient from "@/modules/auth/components/sign-in-form-client";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+    title: "Sign In",
+    description: "Sign in to your PoiEx account.",
+};
 
 const Page = () => {
     return (
