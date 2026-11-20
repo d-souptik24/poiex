@@ -34,6 +34,13 @@ export const PlaygroundEditor = ({
     const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
     const isManualTriggerRef = useRef(false)
 
+    const editorThemeRef = useRef(editorTheme)
+    const focusListenerRef = useRef<IDisposable | null>(null)
+
+    useEffect(() => {
+        editorThemeRef.current = editorTheme
+    }, [editorTheme])
+
     const cancelPendingCompletion = useCallback(() => {
         if (debounceTimerRef.current) {
             clearTimeout(debounceTimerRef.current)
@@ -208,10 +215,13 @@ export const PlaygroundEditor = ({
         }
 
         // Ensure active theme is immediately re-asserted if editor regains focus
-        editor.onDidFocusEditorText(() => {
-            if (editorTheme && monacoRef.current) {
+        if (focusListenerRef.current) {
+            focusListenerRef.current.dispose()
+        }
+        focusListenerRef.current = editor.onDidFocusEditorText(() => {
+            if (editorThemeRef.current && monacoRef.current) {
                 try {
-                    monacoRef.current.editor.setTheme(editorTheme)
+                    monacoRef.current.editor.setTheme(editorThemeRef.current)
                 } catch {}
             }
         })
@@ -249,6 +259,10 @@ export const PlaygroundEditor = ({
             if (contentListenerRef.current) {
                 contentListenerRef.current.dispose()
                 contentListenerRef.current = null
+            }
+            if (focusListenerRef.current) {
+                focusListenerRef.current.dispose()
+                focusListenerRef.current = null
             }
             if (completionRegistrationRef.current) {
                 completionRegistrationRef.current.deregister()
