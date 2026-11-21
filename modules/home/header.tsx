@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import UserButton from "../auth/components/user-button";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { HeaderActions } from "./header-actions";
 
 export function Header() {
     return (
@@ -41,11 +40,8 @@ export function Header() {
                         </span>
                     </Link>
 
-                    {/* Right-side Controls */}
-                    <div className="flex items-center gap-3">
-                        <ThemeToggle />
-                        <UserButton />
-                    </div>
+                    {/* Right-side Controls (Auth-state aware) */}
+                    <HeaderActions />
                 </div>
             </div>
         </header>

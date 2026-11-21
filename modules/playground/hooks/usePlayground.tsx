@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import type { TemplateFolder, TemplateFile } from "../lib/path-to-json";
@@ -26,6 +26,10 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
     const [templateData, setTemplateData] = useState<TemplateFolder | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const lastSavedAtRef = useRef<Date | string | null>(null);
+    const isSavingRef = useRef(false);
+    const pendingSaveDataRef = useRef<TemplateFolder | null>(null);
+    const pendingWaitersRef = useRef<Array<{ resolve: () => void; reject: (err: unknown) => void }>>([]);
 
     const loadPlayground = useCallback(async () => {
         if (!id) return;
@@ -38,6 +42,10 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
             // @ts-expect-error - Prisma playground query shape differs slightly from interface
             setPlaygroundData(data);
+            const rawUpdatedAt = (data?.templateFiles?.[0] as { updatedAt?: Date | string } | undefined)?.updatedAt;
+            if (rawUpdatedAt) {
+                lastSavedAtRef.current = rawUpdatedAt;
+            }
             const rawContent = data?.templateFiles?.[0]?.content;
 
             let parsedContent: unknown = rawContent;
@@ -106,9 +114,14 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
                 }
 
                 if (wasModified) {
-                    SaveUpdatedCode(id, folder).catch((err) => {
+                    try {
+                        const updated = await SaveUpdatedCode(id, folder, lastSavedAtRef.current);
+                        if (updated?.updatedAt) {
+                            lastSavedAtRef.current = updated.updatedAt;
+                        }
+                    } catch (err) {
                         console.warn("Failed to persist updated template data:", err);
-                    });
+                    }
                 }
 
                 setTemplateData(folder);
@@ -144,17 +157,58 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
         }
     }, [id]);
 
-    const saveTemplateData = useCallback(async (data: TemplateFolder) => {
-        try {
-            await SaveUpdatedCode(id, data);
-            setTemplateData(data);
-            toast.success("Changes saved");
-        } catch (err) {
-            console.error("Error saving template data:", err);
-            toast.error("Failed to save changes");
-            throw err;
-        }
-    }, [id]);
+    const saveTemplateData = useCallback(
+        async (data: TemplateFolder): Promise<void> => {
+            if (isSavingRef.current) {
+                pendingSaveDataRef.current = data;
+                return new Promise((resolve, reject) => {
+                    pendingWaitersRef.current.push({ resolve, reject });
+                });
+            }
+
+            isSavingRef.current = true;
+            try {
+                let currentDataToSave: TemplateFolder | null = data;
+                while (currentDataToSave) {
+                    const result = await SaveUpdatedCode(id, currentDataToSave, lastSavedAtRef.current);
+                    if (result?.updatedAt) {
+                        lastSavedAtRef.current = result.updatedAt;
+                    }
+                    setTemplateData(currentDataToSave);
+
+                    if (pendingSaveDataRef.current) {
+                        currentDataToSave = pendingSaveDataRef.current;
+                        pendingSaveDataRef.current = null;
+                    } else {
+                        currentDataToSave = null;
+                    }
+                }
+
+                const waiters = pendingWaitersRef.current;
+                pendingWaitersRef.current = [];
+                waiters.forEach((w) => w.resolve());
+
+                toast.success("Changes saved");
+            } catch (err: unknown) {
+                const waiters = pendingWaitersRef.current;
+                pendingWaitersRef.current = [];
+                waiters.forEach((w) => w.reject(err));
+
+                console.error("Error saving template data:", err);
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg.includes("Concurrency conflict")) {
+                    toast.error("Conflict detected: This playground was modified in another tab. Reload to see the latest changes.");
+                } else {
+                    toast.error("Failed to save changes");
+                }
+                throw err;
+            } finally {
+                isSavingRef.current = false;
+                pendingSaveDataRef.current = null;
+            }
+        },
+        [id]
+    );
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect

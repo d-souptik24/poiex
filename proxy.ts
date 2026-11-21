@@ -32,6 +32,9 @@ export const proxy = auth((req) => {
     }
 
     if(!isLoggedIn && !isPublicRoute){
+        if (nextUrl.pathname.startsWith("/api/")) {
+            return Response.json({ error: "Unauthorized" }, { status: 401 })
+        }
         return Response.redirect(new URL("/auth/sign-in", nextUrl))
     }
     return null

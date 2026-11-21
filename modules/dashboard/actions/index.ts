@@ -22,20 +22,27 @@ export const toggleStarMarked = async (
 
     try {
         if (isChecked) {
-            await db.starMark.create({
-                data: {
-                    userId,
-                    playgroundId,
-                    isMarked: isChecked,
-                },
-            });
-        } else {
-            await db.starMark.delete({
+            await db.starMark.upsert({
                 where: {
                     userId_playgroundId: {
                         userId,
                         playgroundId: playgroundId,
                     },
+                },
+                create: {
+                    userId,
+                    playgroundId,
+                    isMarked: true,
+                },
+                update: {
+                    isMarked: true,
+                },
+            });
+        } else {
+            await db.starMark.deleteMany({
+                where: {
+                    userId,
+                    playgroundId,
                 },
             });
         }
@@ -199,6 +206,20 @@ export const deleteProjectById = async (id: string) => {
             throw new Error("Project not found or unauthorized");
         }
 
+        // Clean up child collections to prevent orphaned ghost files on MongoDB Atlas M0
+        await db.templateFile.deleteMany({ where: { playgroundId: id } });
+        await db.starMark.deleteMany({ where: { playgroundId: id } });
+        const sessions = await db.chatSession.findMany({
+            where: { playgroundId: id },
+            select: { id: true },
+        });
+        if (sessions.length > 0) {
+            await db.chatMessage.deleteMany({
+                where: { sessionId: { in: sessions.map((s) => s.id) } },
+            });
+        }
+        await db.chatSession.deleteMany({ where: { playgroundId: id } });
+
         revalidatePath("/dashboard");
     } catch (error) {
         console.error("Error deleting project:", error);
@@ -274,12 +295,17 @@ export const duplicateProjectById = async (id: string) => {
         await enforceQuotaPostCreation(newPlayground.id, user.id, user.role);
 
         if (originalPlayground.templateFiles?.length > 0 && originalPlayground.templateFiles[0].content !== null) {
-            await db.templateFile.create({
-                data: {
-                    playgroundId: newPlayground.id,
-                    content: originalPlayground.templateFiles[0].content as Prisma.InputJsonValue,
-                },
-            });
+            try {
+                await db.templateFile.create({
+                    data: {
+                        playgroundId: newPlayground.id,
+                        content: originalPlayground.templateFiles[0].content as Prisma.InputJsonValue,
+                    },
+                });
+            } catch (err) {
+                await db.playground.delete({ where: { id: newPlayground.id } }).catch(() => {});
+                throw err;
+            }
         }
 
         revalidatePath("/dashboard");
@@ -356,12 +382,17 @@ export const importGithubRepo = async (data: {
 
     await enforceQuotaPostCreation(playground.id, userId, user.role);
 
-    await db.templateFile.create({
-        data: {
-            playgroundId: playground.id,
-            content: JSON.stringify(templateFolder) as unknown as Prisma.InputJsonValue,
-        },
-    });
+    try {
+        await db.templateFile.create({
+            data: {
+                playgroundId: playground.id,
+                content: JSON.stringify(templateFolder) as unknown as Prisma.InputJsonValue,
+            },
+        });
+    } catch (templateErr) {
+        await db.playground.delete({ where: { id: playground.id } }).catch(() => {});
+        throw templateErr;
+    }
 
     revalidatePath("/dashboard");
     return {

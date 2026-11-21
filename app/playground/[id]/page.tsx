@@ -94,6 +94,7 @@ const subscribeTheme = (callback: () => void) => {
 };
 
 const getThemeSnapshot = () => {
+    if (typeof window === "undefined") return "modern-dark";
     try {
         return localStorage.getItem("poiex-editor-theme") || "modern-dark";
     } catch {
@@ -119,6 +120,7 @@ const MainPlaygroundPage = () => {
     const { resolvedTheme, setTheme } = useTheme();
 
     const [isRightPanelOpen, setIsRightPanelOpen] = useState(() => {
+        if (typeof window === "undefined") return true;
         try {
             const saved = localStorage.getItem(`poiex-right-panel-open-${id}`);
             return saved !== null ? saved === "true" : true;
@@ -128,6 +130,7 @@ const MainPlaygroundPage = () => {
     });
 
     const [isSplitView, setIsSplitView] = useState(() => {
+        if (typeof window === "undefined") return true;
         try {
             const saved = localStorage.getItem(`poiex-split-view-${id}`);
             return saved !== null ? saved === "true" : true;
@@ -210,6 +213,7 @@ const MainPlaygroundPage = () => {
     }, [toggleRightPanel]);
 
     const [isChatOpen, setIsChatOpen] = useState(() => {
+        if (typeof window === "undefined") return false;
         try {
             return localStorage.getItem(`poiex-chat-open-${id}`) === "true";
         } catch {

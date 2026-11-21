@@ -239,6 +239,11 @@ export async function deleteChatSession(
             return { success: false, error: "Session not found" };
         }
 
+        // Delete all child messages first to prevent orphaned records in MongoDB
+        await db.chatMessage.deleteMany({
+            where: { sessionId },
+        });
+
         await db.chatSession.delete({
             where: { id: sessionId },
         });

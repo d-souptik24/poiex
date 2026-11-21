@@ -24,14 +24,14 @@ interface ChatRequest {
 }
 
 // Canonical UI model allowlist to prevent log injection (CWE-117) and DB pollution
-export const ALLOWED_UI_MODELS = new Set([
+const ALLOWED_UI_MODELS = new Set([
     "gemini-3.5-flash-lite",
     "openai/gpt-oss-120b",
     "openrouter/free",
     "poiex3.0-uncensored",
 ]);
 
-export function resolveCanonicalUiModel(rawModel?: string): string {
+function resolveCanonicalUiModel(rawModel?: string): string {
     if (!rawModel || typeof rawModel !== "string") {
         return "gemini-3.5-flash-lite";
     }
@@ -206,7 +206,7 @@ interface ProviderAttempt {
  * Asynchronously prune old messages in a chat session to protect Atlas M0 storage cap.
  * Keeps the latest 50 messages, removing older documents.
  */
-export async function pruneOldSessionMessages(sessionId: string, maxMessages = 50) {
+async function pruneOldSessionMessages(sessionId: string, maxMessages = 50) {
     try {
         const oldMessages = await db.chatMessage.findMany({
             where: { sessionId },
@@ -542,7 +542,7 @@ ${sanitizedActiveFileName ? `\n\n` + getSystemPrompt(mode, sanitizedActiveFileNa
                     if (!process.env.GROQ_API_KEY?.trim()) continue;
 
                     const groqController = new AbortController();
-                    const timeoutId = setTimeout(() => groqController.abort(), 8000);
+                    const timeoutId = setTimeout(() => groqController.abort(), 3500);
                     if (req.signal) {
                         req.signal.addEventListener("abort", () => groqController.abort(), { once: true });
                     }
@@ -593,7 +593,7 @@ ${sanitizedActiveFileName ? `\n\n` + getSystemPrompt(mode, sanitizedActiveFileNa
                     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${gModel}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
 
                     const isThinkingModel = gModel.includes("3.8-flash") || gModel.includes("3.6-flash");
-                    const timeoutMs = isThinkingModel ? 6000 : 8000;
+                    const timeoutMs = isThinkingModel ? 3500 : 4000;
                     const timeoutController = new AbortController();
                     const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
                     if (req.signal) {
@@ -660,7 +660,7 @@ ${sanitizedActiveFileName ? `\n\n` + getSystemPrompt(mode, sanitizedActiveFileNa
                     if (!process.env.OPENROUTER_API_KEY?.trim()) continue;
 
                     const orController = new AbortController();
-                    const timeoutId = setTimeout(() => orController.abort(), 8000);
+                    const timeoutId = setTimeout(() => orController.abort(), 4000);
                     if (req.signal) {
                         req.signal.addEventListener("abort", () => orController.abort(), { once: true });
                     }
