@@ -16,6 +16,9 @@ import { useCurrentUser } from "../hooks/use-current-user";
 const UserButton = () => {
     const user = useCurrentUser();
 
+    // Guard: Never render a phantom avatar or non-functional logout trigger without an active identity
+    if (!user) return null;
+
     return (
         <DropdownMenu>
             <DropdownMenuTrigger
