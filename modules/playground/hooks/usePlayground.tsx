@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import type { TemplateFolder, TemplateFile } from "../lib/path-to-json";
@@ -26,6 +26,7 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
     const [templateData, setTemplateData] = useState<TemplateFolder | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const lastSavedAtRef = useRef<Date | string | null>(null);
 
     const loadPlayground = useCallback(async () => {
         if (!id) return;
@@ -38,6 +39,10 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
             // @ts-expect-error - Prisma playground query shape differs slightly from interface
             setPlaygroundData(data);
+            const rawUpdatedAt = (data?.templateFiles?.[0] as { updatedAt?: Date | string } | undefined)?.updatedAt;
+            if (rawUpdatedAt) {
+                lastSavedAtRef.current = rawUpdatedAt;
+            }
             const rawContent = data?.templateFiles?.[0]?.content;
 
             let parsedContent: unknown = rawContent;
@@ -107,7 +112,10 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
                 if (wasModified) {
                     try {
-                        await SaveUpdatedCode(id, folder);
+                        const updated = await SaveUpdatedCode(id, folder, lastSavedAtRef.current);
+                        if (updated?.updatedAt) {
+                            lastSavedAtRef.current = updated.updatedAt;
+                        }
                     } catch (err) {
                         console.warn("Failed to persist updated template data:", err);
                     }
@@ -148,12 +156,20 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
 
     const saveTemplateData = useCallback(async (data: TemplateFolder) => {
         try {
-            await SaveUpdatedCode(id, data);
+            const result = await SaveUpdatedCode(id, data, lastSavedAtRef.current);
+            if (result?.updatedAt) {
+                lastSavedAtRef.current = result.updatedAt;
+            }
             setTemplateData(data);
             toast.success("Changes saved");
-        } catch (err) {
+        } catch (err: unknown) {
             console.error("Error saving template data:", err);
-            toast.error("Failed to save changes");
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("Concurrency conflict")) {
+                toast.error("Conflict detected: This playground was modified in another tab. Reload to see the latest changes.");
+            } else {
+                toast.error("Failed to save changes");
+            }
             throw err;
         }
     }, [id]);

@@ -23,6 +23,7 @@ export const getPlaygroundById = async (id: string) => {
                 templateFiles: {
                     select: {
                         content: true,
+                        updatedAt: true,
                     },
                 },
             },
@@ -34,7 +35,11 @@ export const getPlaygroundById = async (id: string) => {
     }
 };
 
-export const SaveUpdatedCode = async (playgroundId: string, data: TemplateFolder) => {
+export const SaveUpdatedCode = async (
+    playgroundId: string,
+    data: TemplateFolder,
+    expectedUpdatedAt?: Date | string | null
+) => {
     const user = await currentUser();
     if (!user?.id) return null;
 
@@ -52,6 +57,25 @@ export const SaveUpdatedCode = async (playgroundId: string, data: TemplateFolder
             return null;
         }
 
+        // Optimistic concurrency verification
+        if (expectedUpdatedAt) {
+            const existingFile = await db.templateFile.findUnique({
+                where: { playgroundId },
+                select: { updatedAt: true },
+            });
+
+            if (existingFile?.updatedAt) {
+                const existingTime = new Date(existingFile.updatedAt).getTime();
+                const expectedTime = new Date(expectedUpdatedAt).getTime();
+                if (existingTime > expectedTime) {
+                    console.warn(
+                        `Concurrency conflict on playground ${playgroundId}: DB is newer (${existingFile.updatedAt.toISOString()}) than expected (${new Date(expectedUpdatedAt).toISOString()})`
+                    );
+                    throw new Error("Concurrency conflict: This playground was modified in another session. Please reload before saving.");
+                }
+            }
+        }
+
         const updatedPlayground = await db.templateFile.upsert({
             where: {
                 playgroundId,
@@ -67,7 +91,10 @@ export const SaveUpdatedCode = async (playgroundId: string, data: TemplateFolder
 
         return updatedPlayground;
     } catch (error) {
+        if (error instanceof Error && error.message.includes("Concurrency conflict")) {
+            throw error;
+        }
         console.log("SaveUpdatedCode error:", error);
         return null;
     }
-};
+};
