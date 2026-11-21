@@ -93,6 +93,7 @@ const WebContainerPreview = ({
   const terminalRef = useRef<TerminalRef | null>(null);
   const activeDevProcessRef = useRef<WebContainerProcess | null>(null);
   const activeSpawnProcessRef = useRef<WebContainerProcess | null>(null);
+  const serverReadyUnsubscribeRef = useRef<(() => void) | null>(null);
   const previewWindowRef = usePanelRef();
   const terminalWindowRef = usePanelRef();
   const [isTerminalMaximized, setIsTerminalMaximized] = useState(false);
@@ -188,6 +189,105 @@ const WebContainerPreview = ({
         setNativeAddonError(null);
         setIsEditorMode(false);
 
+        const startDevServerProcess = async () => {
+          // STEP-4 Start The Server
+          if (terminalRef.current?.writeToTerminal) {
+            terminalRef.current.writeToTerminal(
+              "\r\n🚀  Starting development server...\r\n",
+            );
+          }
+
+          // Dynamically detect script: prefer dev, then start, then serve, or fallback to node entrypoint
+          let scriptName: string | null = null;
+          try {
+            const packageJsonContent = await instance.fs.readFile(
+              "package.json",
+              "utf8",
+            );
+            const pkg = JSON.parse(packageJsonContent);
+            const scripts = pkg.scripts || {};
+            if (scripts.dev) {
+              scriptName = "dev";
+            } else if (scripts.start) {
+              scriptName = "start";
+            } else if (scripts.serve) {
+              scriptName = "serve";
+            }
+          } catch {
+            scriptName = "dev";
+          }
+
+          const currentDevProcess = activeDevProcessRef.current as WebContainerProcess | null;
+          if (currentDevProcess) {
+            try {
+              currentDevProcess.kill();
+            } catch {}
+            activeDevProcessRef.current = null;
+          }
+          let startProcess: WebContainerProcess;
+          if (scriptName) {
+            startProcess = await instance.spawn("npm", ["run", scriptName]);
+          } else {
+            let entryFile: string | null = null;
+            for (const f of ["app.js", "server.js", "index.js"]) {
+              try {
+                await instance.fs.readFile(f, "utf8");
+                entryFile = f;
+                break;
+              } catch {}
+            }
+            if (entryFile) {
+              startProcess = await instance.spawn("node", [entryFile]);
+            } else {
+              startProcess = await instance.spawn("npm", ["start"]);
+            }
+          }
+          activeDevProcessRef.current = startProcess;
+          if (cancelled) {
+            try {
+              startProcess.kill();
+            } catch {}
+            activeDevProcessRef.current = null;
+            return;
+          }
+          if (terminalRef.current?.registerBackgroundProcess) {
+            terminalRef.current.registerBackgroundProcess(startProcess);
+          }
+
+          if (serverReadyUnsubscribeRef.current) {
+            try {
+              serverReadyUnsubscribeRef.current();
+            } catch {}
+            serverReadyUnsubscribeRef.current = null;
+          }
+
+          const unsubscribe = instance.on("server-ready", (port: number, url: string) => {
+            if (cancelled) return;
+            if (terminalRef.current?.writeToTerminal) {
+              terminalRef.current.writeToTerminal(
+                `\r\n\x1b[32m🌐  Server ready at\x1b[0m \x1b[4m\x1b[36m${url}\x1b[0m\r\n`,
+              );
+            }
+            terminalRef.current?.renderPrompt?.();
+            setPreviewUrl(url);
+            setPreviewKey((prev) => prev + 1);
+            setIsSetupComplete(true);
+            setupDoneProjectIdRef.current = playgroundId || "default";
+          });
+          serverReadyUnsubscribeRef.current = unsubscribe;
+
+          // Handle start process output - stream to terminal
+          startProcess.output.pipeTo(
+            new WritableStream({
+              write(data) {
+                if (terminalRef.current?.writeToTerminal) {
+                  terminalRef.current.writeToTerminal(data);
+                }
+              },
+            }),
+          ).catch(() => {});
+        };
+
         try {
           let isSameProject = false;
           if (playgroundId) {
@@ -251,35 +351,15 @@ const WebContainerPreview = ({
               return;
             }
 
-            if (serverUrl) {
-              setPreviewUrl(serverUrl);
-              setPreviewKey((prev) => prev + 1);
-              setIsSetupComplete(true);
-              setupDoneProjectIdRef.current = playgroundId || "default";
-              return;
-            }
-            // Files are already mounted, just reconnect to existing server
+            // Option 1: Fast Restore for Cached Workspaces (files and packages are already in Wasm storage)
             if (terminalRef.current?.writeToTerminal) {
               terminalRef.current.writeToTerminal(
-                "🔄 Reconnecting to existing WebContainer session...\r\n",
+                "\x1b[90m[poiex]\x1b[0m \x1b[36mRestoring workspace...\x1b[0m Cached files and dependencies found.\r\n",
               );
             }
 
-            instance.on("server-ready", (port: number, url: string) => {
-              if (cancelled) return;
-              if (terminalRef.current?.writeToTerminal) {
-                terminalRef.current.writeToTerminal(
-                  `🌐 Reconnected to server at ${url}\r\n`,
-                );
-              }
-
-              setPreviewUrl(url);
-              setPreviewKey((prev) => prev + 1);
-              setIsSetupComplete(true);
-              setupDoneProjectIdRef.current = playgroundId || "default";
-            });
-
             setCurrentStep(4);
+            await startDevServerProcess();
             return;
           }
         } catch {}
@@ -526,95 +606,7 @@ const WebContainerPreview = ({
         }
 
         setCurrentStep(4);
-
-        // STEP-4 Start The Server
-        if (terminalRef.current?.writeToTerminal) {
-          terminalRef.current.writeToTerminal(
-            "\r\n🚀  Starting development server...\r\n",
-          );
-        }
-
-        // Dynamically detect script: prefer dev, then start, then serve, or fallback to node entrypoint
-        let scriptName: string | null = null;
-        try {
-          const packageJsonContent = await instance.fs.readFile(
-            "package.json",
-            "utf8",
-          );
-          const pkg = JSON.parse(packageJsonContent);
-          const scripts = pkg.scripts || {};
-          if (scripts.dev) {
-            scriptName = "dev";
-          } else if (scripts.start) {
-            scriptName = "start";
-          } else if (scripts.serve) {
-            scriptName = "serve";
-          }
-        } catch {
-          scriptName = "dev";
-        }
-
-        const currentDevProcess = activeDevProcessRef.current as WebContainerProcess | null;
-        if (currentDevProcess) {
-          try {
-            currentDevProcess.kill();
-          } catch {}
-          activeDevProcessRef.current = null;
-        }
-        let startProcess: WebContainerProcess;
-        if (scriptName) {
-          startProcess = await instance.spawn("npm", ["run", scriptName]);
-        } else {
-          let entryFile: string | null = null;
-          for (const f of ["app.js", "server.js", "index.js"]) {
-            try {
-              await instance.fs.readFile(f, "utf8");
-              entryFile = f;
-              break;
-            } catch {}
-          }
-          if (entryFile) {
-            startProcess = await instance.spawn("node", [entryFile]);
-          } else {
-            startProcess = await instance.spawn("npm", ["start"]);
-          }
-        }
-        activeDevProcessRef.current = startProcess;
-        if (cancelled) {
-          try {
-            startProcess.kill();
-          } catch {}
-          activeDevProcessRef.current = null;
-          return;
-        }
-        if (terminalRef.current?.registerBackgroundProcess) {
-          terminalRef.current.registerBackgroundProcess(startProcess);
-        }
-
-        instance.on("server-ready", (port: number, url: string) => {
-          if (cancelled) return;
-          if (terminalRef.current?.writeToTerminal) {
-            terminalRef.current.writeToTerminal(
-              `\r\n\x1b[32m🌐  Server ready at\x1b[0m \x1b[4m\x1b[36m${url}\x1b[0m\r\n`,
-            );
-          }
-          terminalRef.current?.renderPrompt?.();
-          setPreviewUrl(url);
-          setPreviewKey((prev) => prev + 1);
-          setIsSetupComplete(true);
-          setupDoneProjectIdRef.current = playgroundId || "default";
-        });
-
-        // Handle start process output - stream to terminal
-        startProcess.output.pipeTo(
-          new WritableStream({
-            write(data) {
-              if (terminalRef.current?.writeToTerminal) {
-                terminalRef.current.writeToTerminal(data);
-              }
-            },
-          }),
-        ).catch(() => {});
+        await startDevServerProcess();
       } catch (err) {
         if (cancelled) return;
         console.error("Error setting up container:", err);
@@ -631,6 +623,12 @@ const WebContainerPreview = ({
     setupContainer();
     return () => {
       cancelled = true;
+      if (serverReadyUnsubscribeRef.current) {
+        try {
+          serverReadyUnsubscribeRef.current();
+        } catch {}
+        serverReadyUnsubscribeRef.current = null;
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instance, playgroundId, forceResetup, serverUrl]);
@@ -638,6 +636,12 @@ const WebContainerPreview = ({
   // Cleanup active dev process and in-flight processes on unmount
   useEffect(() => {
     return () => {
+      if (serverReadyUnsubscribeRef.current) {
+        try {
+          serverReadyUnsubscribeRef.current();
+        } catch {}
+        serverReadyUnsubscribeRef.current = null;
+      }
       if (activeDevProcessRef.current) {
         try {
           activeDevProcessRef.current.kill();
