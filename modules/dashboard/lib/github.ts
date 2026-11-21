@@ -150,6 +150,60 @@ export interface ImportedRepoResult {
  * Downloads a GitHub repo zipball in a single HTTP request, decompresses in memory,
  * filters out binaries and bloated directories, and constructs a PoiEx TemplateFolder tree.
  */
+/**
+ * Reads a response body stream with a strict byte limit.
+ * Protects against unbounded buffering when Transfer-Encoding is chunked (content-length is absent).
+ */
+async function readResponseBodyWithLimit(res: Response, maxBytes: number): Promise<ArrayBuffer> {
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > maxBytes) {
+        throw new Error(
+            `Repository archive exceeds the ${(maxBytes / (1024 * 1024)).toFixed(0)}MB limit (size: ${(
+                parseInt(contentLength, 10) /
+                (1024 * 1024)
+            ).toFixed(1)}MB). WebContainers cannot boot repositories larger than 25MB.`
+        );
+    }
+
+    if (!res.body) {
+        return await res.arrayBuffer();
+    }
+
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedBytes = 0;
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+                receivedBytes += value.byteLength;
+                if (receivedBytes > maxBytes) {
+                    await reader.cancel();
+                    throw new Error(
+                        `Repository archive exceeds the ${(maxBytes / (1024 * 1024)).toFixed(0)}MB limit. Download aborted.`
+                    );
+                }
+                chunks.push(value);
+            }
+        }
+    } catch (err) {
+        try {
+            await reader.cancel();
+        } catch {}
+        throw err;
+    }
+
+    const result = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return result.buffer;
+}
+
 export async function fetchGitHubRepoAsTemplate(
     owner: string,
     repo: string,
@@ -243,17 +297,7 @@ export async function fetchGitHubRepoAsTemplate(
         throw new Error(`GitHub responded with status ${res.status}: ${res.statusText}`);
     }
 
-    const contentLength = res.headers.get("content-length");
-    if (contentLength && parseInt(contentLength, 10) > MAX_ARCHIVE_SIZE_BYTES) {
-        throw new Error(
-            `Repository archive exceeds the 25MB limit (size: ${(
-                parseInt(contentLength, 10) /
-                (1024 * 1024)
-            ).toFixed(1)}MB). WebContainers cannot boot repositories larger than 25MB.`
-        );
-    }
-
-    const arrayBuffer = await res.arrayBuffer();
+    const arrayBuffer = await readResponseBodyWithLimit(res, MAX_ARCHIVE_SIZE_BYTES);
     const zip = await JSZip.loadAsync(arrayBuffer);
 
     const root: TemplateFolder = {
@@ -323,16 +367,24 @@ export async function fetchGitHubRepoAsTemplate(
         }
 
         let content = "";
-        try {
-            content = await entry.async("string");
-        } catch {
-            continue;
-        }
+        const declaredUncompressedSize = (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
 
-        if (content.length > MAX_FILE_SIZE_BYTES) {
-            content = `// [File omitted: Size (${(content.length / 1024).toFixed(
+        if (declaredUncompressedSize > MAX_FILE_SIZE_BYTES) {
+            content = `// [File omitted: Declared size (${(declaredUncompressedSize / 1024).toFixed(
                 1
             )}KB) exceeds 500KB in-browser editor limit]`;
+        } else {
+            try {
+                content = await entry.async("string");
+            } catch {
+                continue;
+            }
+
+            if (content.length > MAX_FILE_SIZE_BYTES) {
+                content = `// [File omitted: Size (${(content.length / 1024).toFixed(
+                    1
+                )}KB) exceeds 500KB in-browser editor limit]`;
+            }
         }
 
         totalSizeBytes += content.length;

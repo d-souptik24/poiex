@@ -11,7 +11,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         /**
          * Handle user creation and account linking after a successful sign-in
          */
-        async signIn({ user, account }) {
+        async signIn({ user, account, profile }) {
             if (!user || !account) return false;
 
             // Always persist latest OAuth tokens if the account already exists
@@ -70,6 +70,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
                 if (!newUser) return false; // Return false if user creation fails
             } else {
+                // If linking a new external OAuth provider to an existing account,
+                // verify that the incoming email is officially verified by the provider to prevent account takeover (ATO)
+                if (account.provider === "github") {
+                    const isVerified = (profile as unknown as { email_verified?: boolean })?.email_verified ?? true;
+                    if (isVerified === false) {
+                        console.warn(`[Auth] Rejected linking unverified GitHub email (${userEmail}) to existing account (${existingUser.id})`);
+                        return false;
+                    }
+                }
+
                 // Link the account if user exists
                 const existingAccount = await db.account.findUnique({
                     where: {
