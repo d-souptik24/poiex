@@ -70,6 +70,33 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
 
                 if (!newUser) return false; // Return false if user creation fails
             } else {
+                // Link the account if user exists
+                const existingAccount = await db.account.findUnique({
+                    where: {
+                        provider_providerAccountId: {
+                            provider: account.provider,
+                            providerAccountId: account.providerAccountId,
+                        },
+                    },
+                });
+
+                if (existingAccount) {
+                    // User is already linked. Update tokens if refreshed and allow sign-in without external network call
+                    if (account.access_token) {
+                        await db.account.update({
+                            where: { id: existingAccount.id },
+                            data: {
+                                access_token: account.access_token,
+                                refresh_token: account.refresh_token ?? existingAccount.refresh_token,
+                                expires_at: account.expires_at ?? existingAccount.expires_at,
+                                scope: account.scope ?? existingAccount.scope,
+                                session_state: account.session_state ? String(account.session_state) : existingAccount.session_state,
+                            },
+                        });
+                    }
+                    return true;
+                }
+
                 // If linking a new external OAuth provider to an existing account,
                 // verify that the incoming email is officially verified by the provider to prevent account takeover (ATO)
                 if (account.provider === "github") {
@@ -102,46 +129,22 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                     }
                 }
 
-                // Link the account if user exists
-                const existingAccount = await db.account.findUnique({
-                    where: {
-                        provider_providerAccountId: {
-                            provider: account.provider,
-                            providerAccountId: account.providerAccountId,
-                        },
+                // If the account does not exist, create it
+                await db.account.create({
+                    data: {
+                        userId: existingUser.id,
+                        type: account.type,
+                        provider: account.provider,
+                        providerAccountId: account.providerAccountId,
+                        refresh_token: account.refresh_token,
+                        access_token: account.access_token,
+                        expires_at: account.expires_at,
+                        token_type: account.token_type,
+                        scope: account.scope,
+                        id_token: account.id_token,
+                        session_state: account.session_state ? String(account.session_state) : null,
                     },
                 });
-
-                // If the account does not exist, create it
-                if (!existingAccount) {
-                    await db.account.create({
-                        data: {
-                            userId: existingUser.id,
-                            type: account.type,
-                            provider: account.provider,
-                            providerAccountId: account.providerAccountId,
-                            refresh_token: account.refresh_token,
-                            access_token: account.access_token,
-                            expires_at: account.expires_at,
-                            token_type: account.token_type,
-                            scope: account.scope,
-                            id_token: account.id_token,
-                            session_state: account.session_state ? String(account.session_state) : null,
-                        },
-                    });
-                } else if (account.access_token) {
-                    // Update tokens on subsequent logins
-                    await db.account.update({
-                        where: { id: existingAccount.id },
-                        data: {
-                            access_token: account.access_token,
-                            refresh_token: account.refresh_token ?? existingAccount.refresh_token,
-                            expires_at: account.expires_at ?? existingAccount.expires_at,
-                            scope: account.scope ?? existingAccount.scope,
-                            session_state: account.session_state ? String(account.session_state) : existingAccount.session_state,
-                        },
-                    });
-                }
             }
 
             return true;
