@@ -27,6 +27,9 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const lastSavedAtRef = useRef<Date | string | null>(null);
+    const isSavingRef = useRef(false);
+    const pendingSaveDataRef = useRef<TemplateFolder | null>(null);
+    const pendingWaitersRef = useRef<Array<{ resolve: () => void; reject: (err: unknown) => void }>>([]);
 
     const loadPlayground = useCallback(async () => {
         if (!id) return;
@@ -154,25 +157,58 @@ export const usePlayground = (id: string): UsePlaygroundReturn => {
         }
     }, [id]);
 
-    const saveTemplateData = useCallback(async (data: TemplateFolder) => {
-        try {
-            const result = await SaveUpdatedCode(id, data, lastSavedAtRef.current);
-            if (result?.updatedAt) {
-                lastSavedAtRef.current = result.updatedAt;
+    const saveTemplateData = useCallback(
+        async (data: TemplateFolder): Promise<void> => {
+            if (isSavingRef.current) {
+                pendingSaveDataRef.current = data;
+                return new Promise((resolve, reject) => {
+                    pendingWaitersRef.current.push({ resolve, reject });
+                });
             }
-            setTemplateData(data);
-            toast.success("Changes saved");
-        } catch (err: unknown) {
-            console.error("Error saving template data:", err);
-            const msg = err instanceof Error ? err.message : String(err);
-            if (msg.includes("Concurrency conflict")) {
-                toast.error("Conflict detected: This playground was modified in another tab. Reload to see the latest changes.");
-            } else {
-                toast.error("Failed to save changes");
+
+            isSavingRef.current = true;
+            try {
+                let currentDataToSave: TemplateFolder | null = data;
+                while (currentDataToSave) {
+                    const result = await SaveUpdatedCode(id, currentDataToSave, lastSavedAtRef.current);
+                    if (result?.updatedAt) {
+                        lastSavedAtRef.current = result.updatedAt;
+                    }
+                    setTemplateData(currentDataToSave);
+
+                    if (pendingSaveDataRef.current) {
+                        currentDataToSave = pendingSaveDataRef.current;
+                        pendingSaveDataRef.current = null;
+                    } else {
+                        currentDataToSave = null;
+                    }
+                }
+
+                const waiters = pendingWaitersRef.current;
+                pendingWaitersRef.current = [];
+                waiters.forEach((w) => w.resolve());
+
+                toast.success("Changes saved");
+            } catch (err: unknown) {
+                const waiters = pendingWaitersRef.current;
+                pendingWaitersRef.current = [];
+                waiters.forEach((w) => w.reject(err));
+
+                console.error("Error saving template data:", err);
+                const msg = err instanceof Error ? err.message : String(err);
+                if (msg.includes("Concurrency conflict")) {
+                    toast.error("Conflict detected: This playground was modified in another tab. Reload to see the latest changes.");
+                } else {
+                    toast.error("Failed to save changes");
+                }
+                throw err;
+            } finally {
+                isSavingRef.current = false;
+                pendingSaveDataRef.current = null;
             }
-            throw err;
-        }
-    }, [id]);
+        },
+        [id]
+    );
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
