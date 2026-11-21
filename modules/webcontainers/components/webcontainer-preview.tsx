@@ -288,8 +288,8 @@ const WebContainerPreview = ({
           ).catch(() => {});
         };
 
+        let isSameProject = false;
         try {
-          let isSameProject = false;
           if (playgroundId) {
             try {
               const currentProjectId = await instance.fs.readFile(
@@ -359,7 +359,18 @@ const WebContainerPreview = ({
             }
 
             setCurrentStep(4);
-            await startDevServerProcess();
+            try {
+              await startDevServerProcess();
+            } catch (devErr) {
+              const msg = devErr instanceof Error ? devErr.message : String(devErr);
+              console.error("Failed to start development server during fast restore:", devErr);
+              if (terminalRef.current?.writeToTerminal) {
+                terminalRef.current.writeToTerminal(
+                  `\r\n\x1b[31m[poiex] Dev server failed to start:\x1b[0m ${msg}\r\n`,
+                );
+              }
+              setSetupError(`Failed to start development server: ${msg}`);
+            }
             return;
           }
         } catch {}
@@ -373,14 +384,16 @@ const WebContainerPreview = ({
           activeDevProcessRef.current = null;
         }
 
-        try {
-          const rootEntries = await instance.fs.readdir("/");
-          for (const entry of rootEntries) {
-            try {
-              await instance.fs.rm(entry, { recursive: true, force: true });
-            } catch {}
-          }
-        } catch {}
+        if (!isSameProject || forceResetup) {
+          try {
+            const rootEntries = await instance.fs.readdir("/");
+            for (const entry of rootEntries) {
+              try {
+                await instance.fs.rm(entry, { recursive: true, force: true });
+              } catch {}
+            }
+          } catch {}
+        }
 
         if (terminalRef.current?.resetDirectory) {
           terminalRef.current.resetDirectory();

@@ -57,22 +57,37 @@ export const SaveUpdatedCode = async (
             return null;
         }
 
-        // Optimistic concurrency verification
+        // Atomic optimistic concurrency control
         if (expectedUpdatedAt) {
-            const existingFile = await db.templateFile.findUnique({
-                where: { playgroundId },
-                select: { updatedAt: true },
+            const expectedDate = new Date(expectedUpdatedAt);
+            const updateResult = await db.templateFile.updateMany({
+                where: {
+                    playgroundId,
+                    updatedAt: {
+                        lte: expectedDate,
+                    },
+                },
+                data: {
+                    content: JSON.stringify(data),
+                },
             });
 
-            if (existingFile?.updatedAt) {
-                const existingTime = new Date(existingFile.updatedAt).getTime();
-                const expectedTime = new Date(expectedUpdatedAt).getTime();
-                if (existingTime > expectedTime) {
+            if (updateResult.count === 0) {
+                const existingFile = await db.templateFile.findUnique({
+                    where: { playgroundId },
+                    select: { updatedAt: true },
+                });
+
+                if (existingFile) {
                     console.warn(
-                        `Concurrency conflict on playground ${playgroundId}: DB is newer (${existingFile.updatedAt.toISOString()}) than expected (${new Date(expectedUpdatedAt).toISOString()})`
+                        `Concurrency conflict on playground ${playgroundId}: DB is newer (${existingFile.updatedAt.toISOString()}) than expected (${expectedDate.toISOString()})`
                     );
                     throw new Error("Concurrency conflict: This playground was modified in another session. Please reload before saving.");
                 }
+            } else {
+                return await db.templateFile.findUnique({
+                    where: { playgroundId },
+                });
             }
         }
 

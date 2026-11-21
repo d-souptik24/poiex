@@ -73,9 +73,31 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
                 // If linking a new external OAuth provider to an existing account,
                 // verify that the incoming email is officially verified by the provider to prevent account takeover (ATO)
                 if (account.provider === "github") {
-                    const isVerified = (profile as unknown as { email_verified?: boolean })?.email_verified ?? true;
-                    if (isVerified === false) {
-                        console.warn(`[Auth] Rejected linking unverified GitHub email (${userEmail}) to existing account (${existingUser.id})`);
+                    if (account.access_token) {
+                        try {
+                            const res = await fetch("https://api.github.com/user/emails", {
+                                headers: {
+                                    Authorization: `Bearer ${account.access_token}`,
+                                    "User-Agent": "PoiEx-IDE",
+                                },
+                                signal: AbortSignal.timeout(4000),
+                            });
+                            if (res.ok) {
+                                const emails: Array<{ email: string; verified: boolean }> = await res.json();
+                                const matched = emails.find((e) => e.email.toLowerCase() === userEmail.toLowerCase());
+                                if (!matched?.verified) {
+                                    console.warn(`[Auth] Rejected linking unverified GitHub email (${userEmail}) to existing account (${existingUser.id})`);
+                                    return false;
+                                }
+                            } else {
+                                console.warn(`[Auth] GitHub emails endpoint returned status ${res.status}`);
+                                return false;
+                            }
+                        } catch (err) {
+                            console.error("[Auth] Failed to verify GitHub email:", err);
+                            return false;
+                        }
+                    } else {
                         return false;
                     }
                 }
